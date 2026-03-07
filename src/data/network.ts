@@ -7,7 +7,7 @@
 // Charging stations: nodes 2, 4, 7, 10, 14, 16, 19, 23 (0-indexed)
 //   → marked yellow in the reference image.
 //
-// Coordinates are scaled to a 960 × 800 SVG canvas.
+// Coordinates are scaled to a 960 × 880 SVG canvas.
 // Edit NODE_COORDS to reposition nodes; edge topology is separate.
 // ============================================================
 
@@ -16,38 +16,46 @@ import type { Node, Edge } from '../types/network';
 // ----------------------------------------------------------
 // Node coordinates (edit here to reposition)
 // ----------------------------------------------------------
-// Layout matches the standard Sioux Falls depiction:
-//   Row y=760: nodes 0–4  (bottom)
-//   Row y=590: nodes 5–9
-//   Row y=420: nodes 10–14
-//   Row y=250: nodes 15–19
-//   Row y=80:  nodes 20–23 (top, 4 nodes)
+// Layout reconstructed from the reference image (The-Sioux-Falls-network.png).
+// SVG canvas: 960 × 880  (y increases downward — top = 0).
+//
+// Row / column mapping (approximate, matching the image grid):
+//   Row y≈130:  nodes  0, 1                (top)
+//   Row y≈260:  nodes  2, 3, 4, 5          (2nd row)
+//   Row y≈370:  nodes 11,10, 8, 7          (3rd row)
+//   y≈340 far-right: node 6               (right outlier, top)
+//   Row y≈470:  nodes  9,15               (4th row)
+//   y≈470 far-right: node 17              (right outlier, bottom)
+//   Row y≈540:  nodes 13,14,16,18         (5th row)
+//   Row y≈654:  nodes 22,21               (6th row)
+//   Row y≈730:  nodes 12,23,20,19         (bottom row)
 // ----------------------------------------------------------
 const NODE_COORDS: Record<number, { x: number; y: number }> = {
-  0:  { x: 90,  y: 760 },
-  1:  { x: 290, y: 760 },
-  2:  { x: 480, y: 840 }, // slightly lower — matches image
-  3:  { x: 680, y: 760 },
-  4:  { x: 880, y: 800 },
-  5:  { x: 60,  y: 590 },
-  6:  { x: 230, y: 590 },
-  7:  { x: 430, y: 590 },
-  8:  { x: 630, y: 590 },
-  9:  { x: 830, y: 590 },
-  10: { x: 60,  y: 420 },
-  11: { x: 230, y: 420 },
-  12: { x: 430, y: 420 },
-  13: { x: 630, y: 420 },
-  14: { x: 830, y: 420 },
-  15: { x: 60,  y: 250 },
-  16: { x: 230, y: 250 },
-  17: { x: 430, y: 250 },
-  18: { x: 630, y: 250 },
-  19: { x: 830, y: 250 },
-  20: { x: 230, y: 80  },
-  21: { x: 430, y: 80  },
-  22: { x: 630, y: 80  },
-  23: { x: 830, y: 80  },
+  //  id    x     y
+  0:  { x: 100, y: 130 },  // top-left
+  1:  { x: 680, y: 130 },  // top-right
+  2:  { x: 100, y: 260 },  // CS — left, 2nd row
+  3:  { x: 246, y: 260 },  // 2nd row, center-left
+  4:  { x: 420, y: 260 },  // CS — 2nd row, center
+  5:  { x: 586, y: 260 },  // 2nd row, center-right (standard node 6)
+  6:  { x: 860, y: 340 },  // far-right outlier (standard node 7)
+  7:  { x: 586, y: 370 },  // CS — 3rd row, right-center (standard node 8)
+  8:  { x: 420, y: 370 },  // 3rd row, center (standard node 9)
+  9:  { x: 320, y: 470 },  // 4th row, center-left (standard node 10)
+  10: { x: 226, y: 370 },  // CS — 3rd row, left-center (standard node 11)
+  11: { x: 100, y: 370 },  // 3rd row, far-left (standard node 12)
+  12: { x: 100, y: 730 },  // bottom, far-left (standard node 13)
+  13: { x: 226, y: 540 },  // 5th row, left (standard node 14)
+  14: { x: 380, y: 540 },  // CS — 5th row, center (standard node 15)
+  15: { x: 490, y: 470 },  // 4th row, center-right (standard node 16)
+  16: { x: 490, y: 600 },  // CS — 5th row, center-right (standard node 17)
+  17: { x: 860, y: 470 },  // far-right, lower (standard node 18)
+  18: { x: 606, y: 600 },  // 5th row, right (standard node 19)
+  19: { x: 674, y: 730 },  // CS — bottom, right (standard node 20)
+  20: { x: 490, y: 730 },  // bottom, center (standard node 21)
+  21: { x: 380, y: 654 },  // 6th row, center (standard node 22)
+  22: { x: 226, y: 654 },  // 6th row, left (standard node 23)
+  23: { x: 294, y: 730 },  // CS — bottom, left-center (standard node 24)
 };
 
 const CHARGING_STATIONS = new Set([2, 4, 7, 10, 14, 16, 19, 23]);
