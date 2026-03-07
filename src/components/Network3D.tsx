@@ -1,23 +1,32 @@
 // ============================================================
 // Network3D — @react-three/fiber visualization
-// Same graph data + same simulation state as Network2D
+// Matches the Sioux Falls layout from Network2D
 // ============================================================
 
-import React, { useRef, useMemo } from 'react';
+import { useRef, useMemo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Text, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import { useSimStore } from '../sim/store';
 import { NODES, EDGES } from '../data/network';
-import { interpolateEdgeWithOffset } from '../utils/graph';
+import { SIOUX_FALLS_LAYOUT } from './Network2D';
 import type { Bus } from '../types/network';
 
 // ---- Coordinate mapping ----
-// SVG space (0..960 x 0..880) → 3D space centered around origin
-// X: [0,960] → [-9.6, 9.6]   Y: [0,880] → [8.8, -8.8] (flip Y so top is +Y)
+// SVG space (0..850 x 0..1111) → 3D space centered around origin
+// Center: (425, 555)  Scale: 0.02
+// X: [0,850] → [-8.5, 8.5]   Y flipped so top is +Y → [-5.56, +5.56]
 const SCALE = 0.02;
+const CX = 425;
+const CY = 555;
+
 function toWorld(x: number, y: number, z = 0): [number, number, number] {
-  return [(x - 480) * SCALE, -(y - 440) * SCALE, z];
+  return [(x - CX) * SCALE, -(y - CY) * SCALE, z];
+}
+
+// Build a node position map using SIOUX_FALLS_LAYOUT, fallback to NODES data
+function getLayoutPos(nodeId: number): { x: number; y: number } {
+  return SIOUX_FALLS_LAYOUT[nodeId] ?? { x: 0, y: 0 };
 }
 
 // ============================================================
@@ -29,30 +38,36 @@ function Scene() {
   const selection = useSimStore((s) => s.selection);
   const setSelection = useSimStore((s) => s.setSelection);
 
+  // Build edge offset in 3D (matches 2D EDGE_OFFSET = 6px)
+  const EDGE_OFFSET_3D = 6 * SCALE;
+
   return (
     <>
       {/* Lighting */}
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[10, 15, 10]} intensity={1.2} />
-      <pointLight position={[-10, -10, 5]} intensity={0.4} color="#4466ff" />
+      <ambientLight intensity={1.0} />
+      <directionalLight position={[8, 12, 8]} intensity={1.0} />
+      <pointLight position={[-8, -8, 4]} intensity={0.3} color="#aaccff" />
 
       {/* Edges */}
       {EDGES.map((edge) => {
-        const src = NODES[edge.source];
-        const tgt = NODES[edge.target];
-        // Offset lines as in 2D (perpendicular 5px → 0.1 world units)
-        const dx = tgt.x - src.x;
-        const dy = tgt.y - src.y;
-        const len = Math.sqrt(dx * dx + dy * dy) || 1;
-        const ox = (-dy / len) * 5;
-        const oy = (dx / len) * 5;
+        const srcPos = getLayoutPos(edge.source);
+        const tgtPos = getLayoutPos(edge.target);
 
-        const p1 = toWorld(src.x + ox, src.y + oy);
-        const p2 = toWorld(tgt.x + ox, tgt.y + oy);
+        const dx = tgtPos.x - srcPos.x;
+        const dy = tgtPos.y - srcPos.y;
+        const len = Math.hypot(dx, dy) || 1;
+
+        // Perpendicular offset (same as 2D EDGE_OFFSET=6)
+        const ox = (-dy / len) * 6;
+        const oy = (dx / len) * 6;
+
+        const p1 = toWorld(srcPos.x + ox, srcPos.y + oy);
+        const p2 = toWorld(tgtPos.x + ox, tgtPos.y + oy);
 
         const isSelected = edge.id === selection.selectedEdgeId;
-        const color = isSelected ? '#f39c12' : '#445577';
-        const lineWidth = isSelected ? 3 : 1;
+        const isRouteEdge = false; // route highlight handled by bus selection
+        const color = isSelected ? '#2563eb' : '#333';
+        const lineWidth = isSelected ? 3 : 1.5;
 
         return (
           <Line
@@ -70,21 +85,24 @@ function Scene() {
 
       {/* Nodes */}
       {NODES.map((node) => {
-        const pos = toWorld(node.x, node.y, 0);
+        const pos2D = getLayoutPos(node.id);
+        const pos = toWorld(pos2D.x, pos2D.y, 0);
         const isCS = node.isChargingStation;
         const isSelected = node.id === selection.selectedNodeId;
 
+        // Colors match 2D: white node, yellow CS, blue border when selected
+        const fillColor = isCS ? '#f4ec00' : '#ffffff';
+        const emissiveColor = isSelected ? '#2563eb' : isCS ? '#c8b800' : '#000000';
+
         return (
           <group key={node.id} position={pos}>
-            {isCS && (
+            {isSelected && (
               <mesh>
-                <sphereGeometry args={[0.28, 16, 16]} />
+                <sphereGeometry args={[0.36, 16, 16]} />
                 <meshStandardMaterial
-                  color="#f39c12"
-                  emissive="#f39c12"
-                  emissiveIntensity={0.5}
+                  color="#2563eb"
                   transparent
-                  opacity={0.3}
+                  opacity={0.25}
                 />
               </mesh>
             )}
@@ -94,18 +112,18 @@ function Scene() {
                 setSelection({ selectedNodeId: node.id, selectedBusId: null, selectedEdgeId: null });
               }}
             >
-              <sphereGeometry args={[0.18, 16, 16]} />
+              <sphereGeometry args={[0.22, 16, 16]} />
               <meshStandardMaterial
-                color={isCS ? '#f39c12' : isSelected ? '#3498db' : '#2c3e50'}
-                emissive={isCS ? '#f39c12' : isSelected ? '#3498db' : '#000000'}
-                emissiveIntensity={isCS ? 0.4 : isSelected ? 0.6 : 0}
+                color={fillColor}
+                emissive={emissiveColor}
+                emissiveIntensity={isSelected ? 0.5 : isCS ? 0.3 : 0}
               />
             </mesh>
             {settings.showLabels && (
               <Text
-                position={[0, 0.28, 0.1]}
-                fontSize={0.15}
-                color="#ecf0f1"
+                position={[0, 0.32, 0.1]}
+                fontSize={0.16}
+                color="#111"
                 anchorX="center"
                 anchorY="bottom"
               >
@@ -147,27 +165,48 @@ function Bus3D({
     if (!meshRef.current) return;
 
     let pos2D: { x: number; y: number };
+
     if (bus.currentEdge != null) {
       const edge = EDGES[bus.currentEdge];
-      pos2D = interpolateEdgeWithOffset(edge, bus.progress, bus.laneOffset);
+      if (edge) {
+        const srcPos = getLayoutPos(edge.source);
+        const tgtPos = getLayoutPos(edge.target);
+        const t = Math.max(0, Math.min(1, bus.progress));
+        const dx = tgtPos.x - srcPos.x;
+        const dy = tgtPos.y - srcPos.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const ox = (-dy / len) * bus.laneOffset;
+        const oy = (dx / len) * bus.laneOffset;
+        pos2D = {
+          x: srcPos.x + dx * t + ox,
+          y: srcPos.y + dy * t + oy,
+        };
+      } else {
+        pos2D = getLayoutPos(bus.currentNode);
+      }
     } else {
-      const node = NODES[bus.currentNode];
-      pos2D = { x: node.x, y: node.y };
+      pos2D = getLayoutPos(bus.currentNode);
     }
 
-    const [wx, wy, wz] = toWorld(pos2D.x, pos2D.y, 0.15);
+    const [wx, wy, wz] = toWorld(pos2D.x, pos2D.y, 0.18);
     meshRef.current.position.set(wx, wy, wz);
   });
 
   const color = bus.state === 'charging' ? '#f1c40f' : bus.color;
 
   return (
-    <mesh ref={meshRef} onClick={(e) => { e.stopPropagation(); onSelect(); }}>
-      <boxGeometry args={[0.18, 0.12, 0.1]} />
+    <mesh
+      ref={meshRef}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect();
+      }}
+    >
+      <boxGeometry args={[0.2, 0.14, 0.12]} />
       <meshStandardMaterial
         color={color}
         emissive={color}
-        emissiveIntensity={isSelected ? 0.8 : 0.3}
+        emissiveIntensity={isSelected ? 0.9 : 0.35}
       />
     </mesh>
   );
@@ -179,8 +218,8 @@ function Bus3D({
 export default function Network3D() {
   return (
     <Canvas
-      camera={{ position: [0, 0, 18], fov: 55 }}
-      style={{ background: '#0f0f23' }}
+      camera={{ position: [0, 0, 20], fov: 50 }}
+      style={{ background: '#d0d0d0' }}
       onClick={() => {
         useSimStore.getState().setSelection({
           selectedBusId: null,
@@ -195,7 +234,7 @@ export default function Network3D() {
         enableZoom
         enableRotate
         minDistance={3}
-        maxDistance={40}
+        maxDistance={50}
       />
     </Canvas>
   );
