@@ -35,3 +35,11 @@ jobs:
           name: dist
           path: dist/
           retention-days: 7
+
+      - name: Write summary
+        run: |
+          echo "## Build Result" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Build succeeded. Download the \`dist\` artifact above to preview locally." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Live site (main branch):** https://juunary.github.io/The-Sioux-Falls-network/" >> $GITHUB_STEP_SUMMARY
