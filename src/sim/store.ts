@@ -3,48 +3,60 @@
 // ============================================================
 
 import { create } from 'zustand';
-import type { Bus, SimSettings, SelectionState } from '../types/network';
+import type { Bus, Passenger, SimSettings, SelectionState } from '../types/network';
 import { NODES, EDGES, ADJACENCY } from '../data/network';
 import { ALL_NODE_IDS, CHARGING_STATION_IDS, randomOutgoingEdge } from '../utils/graph';
 import { dijkstra, reconstructPath, nearestChargingStation, insertionHeuristicTour } from '../utils/pathfinding';
 
-// ---- Bus color palette ----
+// ---- Color palettes ----
 const BUS_COLORS = [
   '#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
   '#1abc9c', '#e67e22', '#e91e63', '#00bcd4', '#8bc34a',
   '#ff5722', '#607d8b', '#795548', '#ff9800', '#673ab7',
 ];
 
+export const PASSENGER_COLORS = [
+  '#ff6b6b', '#ffa94d', '#ffe066', '#69db7c', '#4dabf7',
+  '#da77f2', '#f783ac', '#a9e34b', '#63e6be', '#74c0fc',
+  '#ff8787', '#ffec99', '#b2f2bb', '#a5d8ff', '#d0bfff',
+  '#ffa8a8', '#ffda79', '#8ce99a', '#91a7ff', '#f3d9fa',
+];
+
 function busColor(id: number): string {
   return BUS_COLORS[id % BUS_COLORS.length];
+}
+
+export function passengerColor(id: number): string {
+  return PASSENGER_COLORS[id % PASSENGER_COLORS.length];
 }
 
 function randomNode(): number {
   return Math.floor(Math.random() * NODES.length);
 }
 
-function makeBus(id: number, busCount: number): Bus {
+function makeBus(id: number, capacity: number): Bus {
   const startNode = randomNode();
-  // Stagger lane offsets so buses on the same edge don't stack
-  const laneOffset = ((id % 5) - 2) * 6; // -12 to +12 px
+  const laneOffset = ((id % 5) - 2) * 6;
   return {
     id,
     currentNode: startNode,
     currentEdge: null,
     progress: 0,
-    speed: 80 + Math.random() * 40, // 80–120 px/s base speed
-    battery: 60 + Math.random() * 40, // start 60–100%
+    speed: 80 + Math.random() * 40,
+    battery: 60 + Math.random() * 40,
     state: 'idle',
     route: [],
     destination: null,
     color: busColor(id),
     chargeTimeLeft: 0,
     laneOffset,
+    passengerIds: [],
+    capacity,
   };
 }
 
-function createBuses(count: number): Bus[] {
-  return Array.from({ length: count }, (_, i) => makeBus(i, count));
+function createBuses(count: number, capacity: number): Bus[] {
+  return Array.from({ length: count }, (_, i) => makeBus(i, capacity));
 }
 
 // ---- Default settings ----
@@ -54,16 +66,24 @@ const DEFAULT_SETTINGS: SimSettings = {
   routingMode: 'random',
   chargingEnabled: true,
   lowBatteryThreshold: 20,
-  chargeDuration: 8,       // seconds
-  batteryDrainRate: 0.08,  // % per px traveled
+  chargeDuration: 8,
+  batteryDrainRate: 0.08,
   showLabels: true,
   showEdgeIds: true,
   overlayImage: false,
+  passengerSpawnRate: 0.8,   // passengers per second
+  passengerCapacity: 6,      // max per bus
 };
 
 // ---- Store types ----
 export interface SimStore {
   buses: Bus[];
+  passengers: Passenger[];
+  /** Rolling 120-point history of waiting passenger count */
+  waitingHistory: { t: number; count: number }[];
+  simTime: number;
+  nextPassengerId: number;
+
   settings: SimSettings;
   selection: SelectionState;
   isPlaying: boolean;
@@ -72,25 +92,44 @@ export interface SimStore {
   setPlaying: (v: boolean) => void;
   reset: () => void;
   updateBuses: (buses: Bus[]) => void;
+  updatePassengers: (passengers: Passenger[]) => void;
   updateSettings: (patch: Partial<SimSettings>) => void;
   setSelection: (patch: Partial<SelectionState>) => void;
   setBusCount: (n: number) => void;
 }
 
 export const useSimStore = create<SimStore>((set, get) => ({
-  buses: createBuses(DEFAULT_SETTINGS.busCount),
+  buses: createBuses(DEFAULT_SETTINGS.busCount, DEFAULT_SETTINGS.passengerCapacity),
+  passengers: [],
+  waitingHistory: [],
+  simTime: 0,
+  nextPassengerId: 0,
+
   settings: { ...DEFAULT_SETTINGS },
-  selection: { selectedBusId: null, selectedNodeId: null, selectedEdgeId: null },
+  selection: {
+    selectedBusId: null,
+    selectedNodeId: null,
+    selectedEdgeId: null,
+    trackedPassengerId: null,
+  },
   isPlaying: true,
 
   setPlaying: (v) => set({ isPlaying: v }),
 
   reset: () => {
     const { settings } = get();
-    set({ buses: createBuses(settings.busCount), isPlaying: true });
+    set({
+      buses: createBuses(settings.busCount, settings.passengerCapacity),
+      passengers: [],
+      waitingHistory: [],
+      simTime: 0,
+      nextPassengerId: 0,
+      isPlaying: true,
+    });
   },
 
   updateBuses: (buses) => set({ buses }),
+  updatePassengers: (passengers) => set({ passengers }),
 
   updateSettings: (patch) =>
     set((state) => ({ settings: { ...state.settings, ...patch } })),
@@ -106,7 +145,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
       let next: Bus[];
       if (clamped > current.length) {
         const extras = Array.from({ length: clamped - current.length }, (_, i) =>
-          makeBus(current.length + i, clamped),
+          makeBus(current.length + i, state.settings.passengerCapacity),
         );
         next = [...current, ...extras];
       } else {
@@ -118,19 +157,13 @@ export const useSimStore = create<SimStore>((set, get) => ({
 }));
 
 // ============================================================
-// Routing helpers (called by the simulation engine)
+// Routing helpers
 // ============================================================
 
-/**
- * Choose the next edge for a bus that just arrived at a node.
- * Handles low-battery rerouting to charging stations.
- * Mutates the bus object in place and returns it.
- */
 export function advanceBusRoute(bus: Bus, settings: SimSettings): Bus {
   const { routingMode, chargingEnabled, lowBatteryThreshold, chargeDuration } = settings;
   const node = NODES[bus.currentNode];
 
-  // --- Arrived at charging station while needing charge ---
   if (
     chargingEnabled &&
     bus.state !== 'charging' &&
@@ -148,88 +181,47 @@ export function advanceBusRoute(bus: Bus, settings: SimSettings): Bus {
     };
   }
 
-  // --- Low battery: reroute to nearest charging station ---
   if (chargingEnabled && bus.battery < lowBatteryThreshold && !node.isChargingStation) {
     const result = nearestChargingStation(
-      bus.currentNode,
-      CHARGING_STATION_IDS,
-      ALL_NODE_IDS,
-      ADJACENCY,
-      EDGES,
+      bus.currentNode, CHARGING_STATION_IDS, ALL_NODE_IDS, ADJACENCY, EDGES,
     );
     if (result && result.path.length > 1) {
-      const route = result.path.slice(1); // exclude current node
-      const nextNode = route[0];
-      const edge = findEdge(bus.currentNode, nextNode);
+      const route = result.path.slice(1);
+      const edge = findEdge(bus.currentNode, route[0]);
       if (edge) {
-        return {
-          ...bus,
-          state: 'moving',
-          route,
-          destination: result.nodeId,
-          currentEdge: edge.id,
-          progress: 0,
-        };
+        return { ...bus, state: 'moving', route, destination: result.nodeId, currentEdge: edge.id, progress: 0 };
       }
     }
   }
 
-  // --- Follow existing route (shortest-path mode) ---
   if (bus.route.length > 0) {
     const nextNode = bus.route[0];
     const edge = findEdge(bus.currentNode, nextNode);
     if (edge) {
-      return {
-        ...bus,
-        state: 'moving',
-        route: bus.route.slice(1),
-        currentEdge: edge.id,
-        progress: 0,
-      };
+      return { ...bus, state: 'moving', route: bus.route.slice(1), currentEdge: edge.id, progress: 0 };
     }
   }
 
-  // --- Pick next move ---
   if (routingMode === 'shortest') {
-    // Choose a random far-away destination and route to it
     const dest = randomNode();
     const { prev } = dijkstra(bus.currentNode, ALL_NODE_IDS, ADJACENCY, EDGES);
     const path = reconstructPath(bus.currentNode, dest, prev, EDGES);
     if (path.length > 1) {
       const route = path.slice(1);
-      const nextNode = route[0];
-      const edge = findEdge(bus.currentNode, nextNode);
+      const edge = findEdge(bus.currentNode, route[0]);
       if (edge) {
-        return {
-          ...bus,
-          state: 'moving',
-          route: route.slice(1),
-          destination: dest,
-          currentEdge: edge.id,
-          progress: 0,
-        };
+        return { ...bus, state: 'moving', route: route.slice(1), destination: dest, currentEdge: edge.id, progress: 0 };
       }
     }
   }
 
   if (routingMode === 'insertion') {
-    // Pick 4 random unique waypoints and order them with Nearest-Insertion Heuristic,
-    // then chain Dijkstra shortest paths between consecutive stops into one full route.
     const NUM_WAYPOINTS = 4;
     const candidates = ALL_NODE_IDS.filter((id) => id !== bus.currentNode);
-    const waypoints = [...candidates]
-      .sort(() => Math.random() - 0.5)
-      .slice(0, NUM_WAYPOINTS);
+    const waypoints = [...candidates].sort(() => Math.random() - 0.5).slice(0, NUM_WAYPOINTS);
 
-    const ordered = insertionHeuristicTour(
-      bus.currentNode,
-      waypoints,
-      ALL_NODE_IDS,
-      ADJACENCY,
-      EDGES,
-    );
+    const ordered = insertionHeuristicTour(bus.currentNode, waypoints, ALL_NODE_IDS, ADJACENCY, EDGES);
 
-    // Build a flat node sequence by chaining Dijkstra paths between stops
     let fullRoute: number[] = [];
     let cur = bus.currentNode;
     for (const wp of ordered) {
@@ -240,8 +232,7 @@ export function advanceBusRoute(bus: Bus, settings: SimSettings): Bus {
     }
 
     if (fullRoute.length > 0) {
-      const nextNode = fullRoute[0];
-      const edge = findEdge(bus.currentNode, nextNode);
+      const edge = findEdge(bus.currentNode, fullRoute[0]);
       if (edge) {
         return {
           ...bus,
@@ -255,13 +246,11 @@ export function advanceBusRoute(bus: Bus, settings: SimSettings): Bus {
     }
   }
 
-  // --- Random walk (default / fallback) ---
   const edge = randomOutgoingEdge(bus.currentNode);
   if (edge) {
     return { ...bus, state: 'moving', currentEdge: edge.id, progress: 0, route: [] };
   }
 
-  // Dead end — stay idle
   return { ...bus, state: 'idle' };
 }
 

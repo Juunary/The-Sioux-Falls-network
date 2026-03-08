@@ -13,11 +13,11 @@ export interface Node {
 }
 
 export interface Edge {
-  /** Edge ID (0-indexed, matching the link labels in the reference image) */
+  /** Edge ID (0-indexed) */
   id: number;
-  source: number; // node id
-  target: number; // node id
-  /** Euclidean distance derived from node positions (set at init time) */
+  source: number;
+  target: number;
+  /** Euclidean distance derived from node positions */
   weight: number;
 }
 
@@ -25,27 +25,44 @@ export type BusState = 'moving' | 'charging' | 'idle' | 'rerouting';
 
 export interface Bus {
   id: number;
-  /** Node the bus most recently departed from (or is currently at if idle) */
   currentNode: number;
-  /** Edge being traversed, null if idle/charging */
   currentEdge: number | null;
-  /** 0–1 fraction along currentEdge */
   progress: number;
-  /** Speed in "edge-length-per-second" units (adjusted by sim speed multiplier) */
   speed: number;
-  /** Battery level 0–100 */
   battery: number;
   state: BusState;
-  /** Planned node route, index 0 is next waypoint */
   route: number[];
-  /** Current destination node (for shortest-path mode) */
   destination: number | null;
-  /** Color string for rendering */
   color: string;
-  /** Remaining charge time in seconds */
   chargeTimeLeft: number;
-  /** Small perpendicular offset to prevent visual stacking on same edge */
   laneOffset: number;
+  /** IDs of passengers currently on board */
+  passengerIds: number[];
+  /** Maximum passenger capacity */
+  capacity: number;
+}
+
+// ---- Passenger ----
+
+export type PassengerState = 'waiting' | 'riding' | 'arrived' | 'gone';
+
+export interface Passenger {
+  id: number;
+  /** Node where this passenger spawned / is currently waiting */
+  originNode: number;
+  /** Node the passenger wants to reach */
+  destinationNode: number;
+  /** Current node (relevant when waiting; set to last node when riding) */
+  currentNode: number;
+  /** Bus ID when riding, null otherwise */
+  busId: number | null;
+  state: PassengerState;
+  /** simTime when this passenger started waiting at currentNode */
+  waitingSince: number;
+  /** Seconds the passenger will wait before giving up */
+  patience: number;
+  /** Color for rendering and tracking */
+  color: string;
 }
 
 export type RoutingMode = 'random' | 'shortest' | 'insertion';
@@ -55,26 +72,28 @@ export interface SimSettings {
   speedMultiplier: number;
   routingMode: RoutingMode;
   chargingEnabled: boolean;
-  /** Battery % at which bus seeks charging station */
   lowBatteryThreshold: number;
-  /** Seconds to fully charge a bus */
   chargeDuration: number;
-  /** Battery drain per unit distance traveled */
   batteryDrainRate: number;
   showLabels: boolean;
   showEdgeIds: boolean;
   overlayImage: boolean;
+  /** Passengers spawned per second across the whole network */
+  passengerSpawnRate: number;
+  /** Max passengers per bus */
+  passengerCapacity: number;
 }
 
 export interface SelectionState {
   selectedBusId: number | null;
   selectedNodeId: number | null;
   selectedEdgeId: number | null;
+  /** Passenger being tracked (highlighted and shown in InfoPanel) */
+  trackedPassengerId: number | null;
 }
 
 export interface NetworkGraph {
   nodes: Node[];
   edges: Edge[];
-  /** Adjacency: nodeId -> list of outgoing edge ids */
   adjacency: Map<number, number[]>;
 }

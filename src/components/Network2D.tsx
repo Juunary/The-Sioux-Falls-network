@@ -8,6 +8,9 @@ import { useSimStore } from '../sim/store';
 import { NODES, EDGES } from '../data/network';
 import type { Bus } from '../types/network';
 
+const PAX_R = 5;          // passenger dot radius
+const PAX_MAX_VISIBLE = 6; // max dots shown per node (rest shown as "+N")
+
 const SVG_W = 850;
 const SVG_H = 1111;
 const NODE_R = 24;
@@ -57,6 +60,7 @@ export default function Network2D() {
   const gRef = useRef<SVGGElement>(null);
 
   const buses = useSimStore((s) => s.buses);
+  const passengers = useSimStore((s) => s.passengers);
   const settings = useSimStore((s) => s.settings);
   const selection = useSimStore((s) => s.selection);
   const setSelection = useSimStore((s) => s.setSelection);
@@ -431,6 +435,135 @@ export default function Network2D() {
                   style={{ pointerEvents: 'none', userSelect: 'none' }}
                 >
                   B{bus.id}
+                </text>
+              )}
+
+              {/* ---- Riding passengers — row below bus circle ---- */}
+              {(() => {
+                const riders = bus.passengerIds
+                  .map((pid) => passengers.find((p) => p.id === pid))
+                  .filter(Boolean) as typeof passengers;
+                if (riders.length === 0) return null;
+
+                const BUS_R = 8;
+                const spacing = PAX_R * 2 + 2;
+                const totalW = riders.length * spacing - 2;
+                const startX = -totalW / 2 + PAX_R;
+                const dotY = BUS_R + PAX_R + 3;
+
+                return (
+                  <g>
+                    {riders.map((p, i) => {
+                      const isTracked = p.id === selection.trackedPassengerId;
+                      return (
+                        <g
+                          key={p.id}
+                          style={{ cursor: 'pointer' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelection({
+                              trackedPassengerId: isTracked ? null : p.id,
+                              selectedBusId: null,
+                              selectedNodeId: null,
+                              selectedEdgeId: null,
+                            });
+                          }}
+                        >
+                          {isTracked && (
+                            <circle
+                              cx={startX + i * spacing}
+                              cy={dotY}
+                              r={PAX_R + 2.5}
+                              fill="none"
+                              stroke={p.color}
+                              strokeWidth={1.5}
+                            />
+                          )}
+                          <circle
+                            cx={startX + i * spacing}
+                            cy={dotY}
+                            r={PAX_R}
+                            fill={p.color}
+                            stroke="rgba(0,0,0,0.4)"
+                            strokeWidth={0.8}
+                          />
+                          <title>Pax #{p.id} → Node {p.destinationNode}</title>
+                        </g>
+                      );
+                    })}
+                  </g>
+                );
+              })()}
+            </g>
+          );
+        })}
+
+        {/* ---- Waiting Passengers at Nodes ---- */}
+        {displayNodes.map((node) => {
+          const waitingHere = passengers.filter(
+            (p) => p.state === 'waiting' && p.currentNode === node.id,
+          );
+          if (waitingHere.length === 0) return null;
+
+          const visible = waitingHere.slice(0, PAX_MAX_VISIBLE);
+          const overflow = waitingHere.length - visible.length;
+          // Arrange dots in a row above the node
+          const spacing = PAX_R * 2 + 2;
+          const totalW = visible.length * spacing + (overflow > 0 ? 18 : 0);
+          const startX = -totalW / 2 + PAX_R;
+          const dotY = -(NODE_R + PAX_R + 4);
+
+          return (
+            <g key={`pax-${node.id}`} transform={`translate(${node.x},${node.y})`}>
+              {visible.map((p, i) => {
+                const isTracked = p.id === selection.trackedPassengerId;
+                return (
+                  <g
+                    key={p.id}
+                    style={{ cursor: 'pointer' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelection({
+                        trackedPassengerId: isTracked ? null : p.id,
+                        selectedBusId: null,
+                        selectedNodeId: null,
+                        selectedEdgeId: null,
+                      });
+                    }}
+                  >
+                    {isTracked && (
+                      <circle
+                        cx={startX + i * spacing}
+                        cy={dotY}
+                        r={PAX_R + 3}
+                        fill="none"
+                        stroke={p.color}
+                        strokeWidth={1.5}
+                        opacity={0.9}
+                      />
+                    )}
+                    <circle
+                      cx={startX + i * spacing}
+                      cy={dotY}
+                      r={PAX_R}
+                      fill={p.color}
+                      stroke="#111"
+                      strokeWidth={0.8}
+                      opacity={0.92}
+                    />
+                    <title>Pax #{p.id} → Node {p.destinationNode}</title>
+                  </g>
+                );
+              })}
+              {overflow > 0 && (
+                <text
+                  x={startX + visible.length * spacing + 2}
+                  y={dotY + 4}
+                  fontSize={8}
+                  fill="#555"
+                  style={{ pointerEvents: 'none', userSelect: 'none' }}
+                >
+                  +{overflow}
                 </text>
               )}
             </g>
