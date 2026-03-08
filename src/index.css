@@ -272,6 +272,88 @@ html, body, #root {
   flex-shrink: 0;
 }
 
+/* ---- Passenger chart ---- */
+
+.waiting-chart {
+  display: block;
+  margin: 4px 0;
+}
+
+.chart-placeholder {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.pax-stat-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.pax-stat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.pax-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ---- Passenger tracking ---- */
+
+.tracked-section {
+  border-width: 2px;
+}
+
+.btn-untrack {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.btn-untrack:hover {
+  color: var(--text);
+}
+
+/* Passenger ID badges (shown on bus panel) */
+.pax-id-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  justify-content: flex-end;
+  max-width: 120px;
+}
+
+.pax-id-badge {
+  display: inline-block;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 9px;
+  color: #111;
+  font-weight: bold;
+  cursor: pointer;
+  opacity: 0.9;
+  transition: opacity 0.1s;
+}
+
+.pax-id-badge:hover {
+  opacity: 1;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 4px;

@@ -77,7 +77,13 @@ export default function Controls({ viewMode, onToggleView }: ControlsProps) {
       <div className="control-group">
         <label>Routing Mode</label>
         <div className="radio-group">
-          {(['random', 'shortest'] as RoutingMode[]).map((mode) => (
+          {(
+            [
+              ['random', 'Random Walk'],
+              ['shortest', 'Shortest Path'],
+              ['insertion', 'Insertion Heuristic'],
+            ] as [RoutingMode, string][]
+          ).map(([mode, label]) => (
             <label key={mode} className="radio-label">
               <input
                 type="radio"
@@ -86,7 +92,7 @@ export default function Controls({ viewMode, onToggleView }: ControlsProps) {
                 checked={settings.routingMode === mode}
                 onChange={() => updateSettings({ routingMode: mode })}
               />
-              {mode === 'random' ? 'Random Walk' : 'Shortest Path'}
+              {label}
             </label>
           ))}
         </div>
