@@ -446,10 +446,11 @@ export default function Network2D() {
                 if (riders.length === 0) return null;
 
                 const BUS_R = 8;
+                const SELECTED_RING_R = 11; // outer ring radius when bus is selected
                 const spacing = PAX_R * 2 + 2;
                 const totalW = riders.length * spacing - 2;
                 const startX = -totalW / 2 + PAX_R;
-                const dotY = BUS_R + PAX_R + 3;
+                const dotY = SELECTED_RING_R + PAX_R + 5; // 11 + 5 + 5 = 21, clears the selection ring
 
                 return (
                   <g>

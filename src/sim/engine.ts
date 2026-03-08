@@ -38,17 +38,19 @@ export function useSimulationEngine(): void {
       const { buses, passengers, settings, nextPassengerId, simTime, waitingHistory } = state;
       const newSimTime = simTime + dt;
 
-      // 1. Step buses (movement / charging / routing)
-      const steppedBuses = buses.map((bus) =>
-        stepBus(bus, dt, settings.speedMultiplier, settings),
-      );
-
-      // 2. Handle passenger events (patience, alighting, boarding)
+      // 1. Handle passenger events (alighting, boarding) before buses depart
+      //    Buses that arrived last tick are idle (currentEdge === null), so
+      //    passengers can board before advanceBusRoute sends them off again.
       const { buses: busesAfterPax, passengers: updatedPax } = processPassengers(
-        steppedBuses,
+        buses,
         passengers,
         settings,
         newSimTime,
+      );
+
+      // 2. Step buses (movement / charging / routing) — depart after boarding
+      const steppedBuses = busesAfterPax.map((bus) =>
+        stepBus(bus, dt, settings.speedMultiplier, settings),
       );
 
       // 3. Spawn new passengers
@@ -73,7 +75,7 @@ export function useSimulationEngine(): void {
       }
 
       useSimStore.setState({
-        buses: busesAfterPax,
+        buses: steppedBuses,
         passengers: finalPax,
         nextPassengerId: nextId,
         simTime: newSimTime,
@@ -130,7 +132,9 @@ function stepMoving(bus: Bus, dt: number, speedMultiplier: number, settings: Sim
   const newBattery = Math.max(0, bus.battery - settings.batteryDrainRate * distanceTraveled);
 
   if (newProgress >= 1) {
-    const arrivedBus: Bus = {
+    // Stay idle for one tick so processPassengers can handle boarding/alighting
+    // before advanceBusRoute sends the bus off on the next tick.
+    return {
       ...bus,
       currentNode: edge.target,
       currentEdge: null,
@@ -138,7 +142,6 @@ function stepMoving(bus: Bus, dt: number, speedMultiplier: number, settings: Sim
       battery: newBattery,
       state: 'idle',
     };
-    return advanceBusRoute(arrivedBus, settings);
   }
 
   return { ...bus, progress: newProgress, battery: newBattery };
@@ -234,7 +237,7 @@ function processPassengers(
  */
 function shouldBoard(bus: Bus, passenger: Passenger, settings: SimSettings): boolean {
   if (settings.routingMode === 'random') {
-    return Math.random() < 0.35;
+    return Math.random() < 0.8;
   }
   return (
     bus.route.includes(passenger.destinationNode) ||
