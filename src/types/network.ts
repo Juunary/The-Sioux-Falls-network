@@ -48,7 +48,7 @@ export interface Bus {
   laneOffset: number;
 }
 
-export type RoutingMode = 'random' | 'shortest';
+export type RoutingMode = 'random' | 'shortest' | 'insertion';
 
 export interface SimSettings {
   busCount: number;

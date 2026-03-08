@@ -6,7 +6,7 @@ import { create } from 'zustand';
 import type { Bus, SimSettings, SelectionState } from '../types/network';
 import { NODES, EDGES, ADJACENCY } from '../data/network';
 import { ALL_NODE_IDS, CHARGING_STATION_IDS, randomOutgoingEdge } from '../utils/graph';
-import { dijkstra, reconstructPath, nearestChargingStation } from '../utils/pathfinding';
+import { dijkstra, reconstructPath, nearestChargingStation, insertionHeuristicTour } from '../utils/pathfinding';
 
 // ---- Bus color palette ----
 const BUS_COLORS = [
@@ -205,6 +205,49 @@ export function advanceBusRoute(bus: Bus, settings: SimSettings): Bus {
           state: 'moving',
           route: route.slice(1),
           destination: dest,
+          currentEdge: edge.id,
+          progress: 0,
+        };
+      }
+    }
+  }
+
+  if (routingMode === 'insertion') {
+    // Pick 4 random unique waypoints and order them with Nearest-Insertion Heuristic,
+    // then chain Dijkstra shortest paths between consecutive stops into one full route.
+    const NUM_WAYPOINTS = 4;
+    const candidates = ALL_NODE_IDS.filter((id) => id !== bus.currentNode);
+    const waypoints = [...candidates]
+      .sort(() => Math.random() - 0.5)
+      .slice(0, NUM_WAYPOINTS);
+
+    const ordered = insertionHeuristicTour(
+      bus.currentNode,
+      waypoints,
+      ALL_NODE_IDS,
+      ADJACENCY,
+      EDGES,
+    );
+
+    // Build a flat node sequence by chaining Dijkstra paths between stops
+    let fullRoute: number[] = [];
+    let cur = bus.currentNode;
+    for (const wp of ordered) {
+      const { prev } = dijkstra(cur, ALL_NODE_IDS, ADJACENCY, EDGES);
+      const path = reconstructPath(cur, wp, prev, EDGES);
+      if (path.length > 1) fullRoute = [...fullRoute, ...path.slice(1)];
+      cur = wp;
+    }
+
+    if (fullRoute.length > 0) {
+      const nextNode = fullRoute[0];
+      const edge = findEdge(bus.currentNode, nextNode);
+      if (edge) {
+        return {
+          ...bus,
+          state: 'moving',
+          route: fullRoute.slice(1),
+          destination: fullRoute[fullRoute.length - 1],
           currentEdge: edge.id,
           progress: 0,
         };
