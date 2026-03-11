@@ -7,6 +7,7 @@ import type { Bus, Passenger, SimSettings, SelectionState } from '../types/netwo
 import { NODES, EDGES, ADJACENCY } from '../data/network';
 import { ALL_NODE_IDS, CHARGING_STATION_IDS, randomOutgoingEdge } from '../utils/graph';
 import { dijkstra, reconstructPath, nearestChargingStation, insertionHeuristicTour } from '../utils/pathfinding';
+import { simRng, fisherYatesSample } from '../utils/rng';
 
 // ---- Color palettes ----
 const BUS_COLORS = [
@@ -31,7 +32,7 @@ export function passengerColor(id: number): string {
 }
 
 function randomNode(): number {
-  return Math.floor(Math.random() * NODES.length);
+  return Math.floor(simRng() * NODES.length);
 }
 
 function makeBus(id: number, capacity: number): Bus {
@@ -42,8 +43,8 @@ function makeBus(id: number, capacity: number): Bus {
     currentNode: startNode,
     currentEdge: null,
     progress: 0,
-    speed: 80 + Math.random() * 40,
-    battery: 60 + Math.random() * 40,
+    speed: 80 + simRng() * 40,
+    battery: 60 + simRng() * 40,
     state: 'idle',
     route: [],
     destination: null,
@@ -73,6 +74,7 @@ const DEFAULT_SETTINGS: SimSettings = {
   overlayImage: false,
   passengerSpawnRate: 0.8,   // passengers per second
   passengerCapacity: 6,      // max per bus
+  reboardEnabled: true,      // free-play default; set false for benchmark mode
 };
 
 // ---- Store types ----
@@ -186,10 +188,20 @@ export function advanceBusRoute(bus: Bus, settings: SimSettings): Bus {
       bus.currentNode, CHARGING_STATION_IDS, ALL_NODE_IDS, ADJACENCY, EDGES,
     );
     if (result && result.path.length > 1) {
-      const route = result.path.slice(1);
-      const edge = findEdge(bus.currentNode, route[0]);
+      // Route Invariant: currentEdge.target must NOT appear in route[].
+      // path = [currentNode, node1, node2, ..., charger]
+      // → set currentEdge = edge to node1, route = [node2, ..., charger] (path.slice(2))
+      const firstHop = result.path[1];
+      const edge = findEdge(bus.currentNode, firstHop);
       if (edge) {
-        return { ...bus, state: 'moving', route, destination: result.nodeId, currentEdge: edge.id, progress: 0 };
+        return {
+          ...bus,
+          state: 'moving',
+          currentEdge: edge.id,
+          progress: 0,
+          route: result.path.slice(2),  // node1 excluded — it is currentEdge.target
+          destination: result.nodeId,
+        };
       }
     }
   }
@@ -218,7 +230,7 @@ export function advanceBusRoute(bus: Bus, settings: SimSettings): Bus {
   if (routingMode === 'insertion') {
     const NUM_WAYPOINTS = 4;
     const candidates = ALL_NODE_IDS.filter((id) => id !== bus.currentNode);
-    const waypoints = [...candidates].sort(() => Math.random() - 0.5).slice(0, NUM_WAYPOINTS);
+    const waypoints = fisherYatesSample(candidates, NUM_WAYPOINTS, simRng);
 
     const ordered = insertionHeuristicTour(bus.currentNode, waypoints, ALL_NODE_IDS, ADJACENCY, EDGES);
 

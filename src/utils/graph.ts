@@ -4,6 +4,7 @@
 
 import type { Node, Edge } from '../types/network';
 import { NODES, EDGES, ADJACENCY } from '../data/network';
+import { simRng } from './rng';
 
 /** Get a node by id — throws if not found */
 export function getNode(id: number): Node {
@@ -28,7 +29,7 @@ export function outgoingEdges(nodeId: number): Edge[] {
 export function randomOutgoingEdge(nodeId: number): Edge | null {
   const edges = outgoingEdges(nodeId);
   if (edges.length === 0) return null;
-  return edges[Math.floor(Math.random() * edges.length)];
+  return edges[Math.floor(simRng() * edges.length)];
 }
 
 /** Interpolate a point along an edge at fraction t (0–1) */

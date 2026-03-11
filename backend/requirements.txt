@@ -1,0 +1,23 @@
+# ============================================================
+# Backend dependencies — Sioux Falls Network Simulator
+# Python >= 3.10
+# ============================================================
+
+# Web framework
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+
+# Data validation
+pydantic==2.9.2
+
+# RL / ML
+gymnasium==0.29.1
+stable-baselines3==2.3.2
+sb3-contrib==2.3.0          # MaskablePPO
+torch==2.4.1                # CPU wheel — swap for cu121 if GPU available
+numpy==1.26.4
+onnx==1.16.1
+onnxruntime==1.19.2
+
+# Utilities
+tqdm==4.66.6

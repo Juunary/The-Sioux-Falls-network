@@ -3,6 +3,10 @@
 // Source: LeBlanc, Morlok & Pierskalla (1975)
 // 24 nodes, 76 directed links (74 confirmed + 2 marked uncertain)
 //
+// BENCHMARK TOPOLOGY v1 — DO NOT CHANGE AFTER DATASET GENERATION
+// All training/validation/test scenarios reference graph_version: "v1".
+// Edges 74 and 75 (nodes 5 ↔ 6) are retained as part of v1.
+//
 // Node IDs are 0-indexed throughout (standard 1-indexed labels - 1).
 // Charging stations: nodes 2, 4, 7, 10, 14, 16, 19, 23 (0-indexed)
 //   → marked yellow in the reference image.

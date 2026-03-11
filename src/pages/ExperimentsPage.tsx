@@ -1,0 +1,220 @@
+// ============================================================
+// ExperimentsPage — run and browse baseline evaluations
+// ============================================================
+
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  runEvaluation,
+  listExperiments,
+  getExperiment,
+  type MetricRow,
+} from '../api/experiments';
+
+const NA = <span style={{ color: '#7a7a9a' }}>N/A</span>;
+
+function fmtNum(v: number | undefined | null, decimals = 3): React.ReactNode {
+  if (v === undefined || v === null || v === 0) return NA;
+  return v.toFixed(decimals);
+}
+
+export default function ExperimentsPage() {
+  const [policy, setPolicy] = useState('demand_aware_greedy_v1');
+  const [split, setSplit] = useState('test');
+  const [maxScenarios, setMaxScenarios] = useState<number | ''>('');
+
+  const [running, setRunning] = useState(false);
+  const [runResult, setRunResult] = useState<string | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
+
+  const [experiments, setExperiments] = useState<Record<string, unknown>[]>([]);
+  const [loadingExps, setLoadingExps] = useState(false);
+
+  const [selectedExpId, setSelectedExpId] = useState<string | null>(null);
+  const [metrics, setMetrics] = useState<MetricRow[]>([]);
+  const [loadingMetrics, setLoadingMetrics] = useState(false);
+
+  const loadExperiments = useCallback(async () => {
+    setLoadingExps(true);
+    try {
+      const res = await listExperiments();
+      setExperiments(res.experiments);
+    } catch {
+      // backend may not be running
+    } finally {
+      setLoadingExps(false);
+    }
+  }, []);
+
+  useEffect(() => { loadExperiments(); }, [loadExperiments]);
+
+  async function loadMetrics(expId: string) {
+    setLoadingMetrics(true);
+    setMetrics([]);
+    try {
+      const res = await getExperiment(expId);
+      setMetrics(res.metrics);
+    } catch {
+      setMetrics([]);
+    } finally {
+      setLoadingMetrics(false);
+    }
+  }
+
+  async function handleRun(e: React.FormEvent) {
+    e.preventDefault();
+    setRunning(true);
+    setRunResult(null);
+    setRunError(null);
+    try {
+      const res = await runEvaluation({
+        policy,
+        split,
+        max_scenarios: maxScenarios === '' ? null : maxScenarios,
+      });
+      setRunResult(`Started: ${res.experiment_id}`);
+      setTimeout(loadExperiments, 1500);
+    } catch (e) {
+      setRunError(String(e));
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  function handleSelectExp(id: string) {
+    setSelectedExpId(id);
+    loadMetrics(id);
+  }
+
+  return (
+    <div className="page-scrollable">
+      <div className="page-inner">
+        <h1 className="page-title">Experiments</h1>
+
+        <section className="card">
+          <h2 className="card-title">Run Evaluation</h2>
+          <form onSubmit={handleRun}>
+            <div className="form-grid">
+              <label className="form-label">
+                Policy
+                <select value={policy} onChange={(e) => setPolicy(e.target.value)}
+                  className="form-input">
+                  <option value="demand_aware_greedy_v1">demand_aware_greedy_v1</option>
+                </select>
+              </label>
+              <label className="form-label">
+                Split
+                <select value={split} onChange={(e) => setSplit(e.target.value)}
+                  className="form-input">
+                  <option value="train">train</option>
+                  <option value="val">val</option>
+                  <option value="test">test</option>
+                </select>
+              </label>
+              <label className="form-label">
+                Max scenarios (blank = all)
+                <input type="number" min={1} value={maxScenarios}
+                  onChange={(e) => setMaxScenarios(e.target.value === '' ? '' : parseInt(e.target.value))}
+                  className="form-input" placeholder="all" />
+              </label>
+            </div>
+            <div className="form-actions">
+              <button type="submit" className="btn btn-primary" disabled={running}>
+                {running ? 'Starting...' : 'Run Evaluation'}
+              </button>
+              {runResult && <span className="status-ok">{runResult}</span>}
+              {runError  && <span className="status-err">{runError}</span>}
+            </div>
+          </form>
+        </section>
+
+        <section className="card">
+          <div className="card-header-row">
+            <h2 className="card-title">Past Experiments</h2>
+            <button className="btn" onClick={loadExperiments} disabled={loadingExps}>Refresh</button>
+          </div>
+          {loadingExps && <div className="status-info">Loading...</div>}
+          {!loadingExps && experiments.length === 0 && (
+            <div className="status-info">No experiments yet.</div>
+          )}
+          {experiments.length > 0 && (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr><th>Experiment ID</th><th>Policy</th><th>Split</th><th>Created</th></tr>
+                </thead>
+                <tbody>
+                  {experiments.map((exp) => {
+                    const id = exp['experiment_id'] as string;
+                    return (
+                      <tr key={id}
+                        className={id === selectedExpId ? 'row-selected' : ''}
+                        onClick={() => handleSelectExp(id)}
+                        style={{ cursor: 'pointer' }}>
+                        <td className="mono">{id}</td>
+                        <td>{exp['policy'] as string}</td>
+                        <td>{exp['split'] as string}</td>
+                        <td className="mono">{exp['created_at'] as string}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        {selectedExpId && (
+          <section className="card">
+            <h2 className="card-title">Metrics — {selectedExpId}</h2>
+            {loadingMetrics && <div className="status-info">Loading metrics...</div>}
+            {!loadingMetrics && metrics.length === 0 && (
+              <div className="status-info">No metrics yet (evaluation may still be running).</div>
+            )}
+            {metrics.length > 0 && (
+              <>
+                <div className="metrics-summary">
+                  <span>Scenarios: {metrics.length}</span>
+                  <span>
+                    Avg reward: {(metrics.reduce((s, m) => s + m.episode_reward, 0) / metrics.length).toFixed(2)}
+                  </span>
+                  <span>
+                    Avg service rate:{' '}
+                    {(metrics.reduce((s, m) => s + m.service_rate, 0) / metrics.length * 100).toFixed(1)}%
+                  </span>
+                </div>
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Scenario</th>
+                        <th>Reward</th>
+                        <th>Spawned</th>
+                        <th>Served</th>
+                        <th>Gone</th>
+                        <th>Service %</th>
+                        <th>Avg Wait</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {metrics.map((m) => (
+                        <tr key={m.scenario_id}>
+                          <td className="mono">{m.scenario_id}</td>
+                          <td>{m.episode_reward.toFixed(1)}</td>
+                          <td>{m.passengers_spawned}</td>
+                          <td>{m.passengers_served}</td>
+                          <td>{m.passengers_gone}</td>
+                          <td>{(m.service_rate * 100).toFixed(1)}%</td>
+                          <td>{fmtNum(m.avg_wait_time_sec, 1)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </section>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -65,7 +65,9 @@ export interface Passenger {
   color: string;
 }
 
-export type RoutingMode = 'random' | 'shortest' | 'insertion';
+// 'greedy' = demand-aware greedy baseline (demand_aware_greedy_v1)
+// 'ppo'    = ONNX-exported PPO policy (Phase 8)
+export type RoutingMode = 'random' | 'shortest' | 'insertion' | 'greedy' | 'ppo';
 
 export interface SimSettings {
   busCount: number;
@@ -82,6 +84,12 @@ export interface SimSettings {
   passengerSpawnRate: number;
   /** Max passengers per bus */
   passengerCapacity: number;
+  /**
+   * When true (free-play default): riders who reach their destination have a
+   * 50% chance of becoming a new waiting passenger with a fresh destination.
+   * When false (benchmark mode): every rider permanently exits on arrival.
+   */
+  reboardEnabled: boolean;
 }
 
 export interface SelectionState {
@@ -96,4 +104,73 @@ export interface NetworkGraph {
   nodes: Node[];
   edges: Edge[];
   adjacency: Map<number, number[]>;
+}
+
+// ---- Scenario / Replay types ----
+
+export interface BusInitial {
+  id: number;
+  start_node: number;
+  battery: number;
+  speed: number;
+}
+
+export interface PassengerEvent {
+  event_id: number;
+  /** Simulation time at which this passenger spawns */
+  spawn_time: number;
+  origin: number;
+  destination: number;
+  patience: number;
+}
+
+export interface ScenarioMeta {
+  scenario_id: string;
+  graph_version: string;
+  seed: number;
+  split: 'train' | 'val' | 'test';
+  difficulty: 'easy' | 'medium' | 'hard' | 'stress';
+  episode_length: number;
+  sim_dt: number;
+  bus_count: number;
+  spawn_rate: number;
+  reboard_enabled: boolean;
+  charging_enabled: boolean;
+  low_battery_threshold: number;
+  charge_duration: number;
+  battery_drain_rate: number;
+  passenger_capacity: number;
+  generator_version: string;
+}
+
+export interface ScenarioData {
+  meta: ScenarioMeta;
+  buses_initial: BusInitial[];
+  passenger_events: PassengerEvent[];
+}
+
+/**
+ * Context passed to the routing decision function.
+ * Contains all global simulation state needed by demand-aware and PPO policies.
+ */
+export interface DecisionContext {
+  allBuses: Bus[];
+  passengers: Passenger[];
+  simTime: number;
+  rng: () => number;
+}
+
+/** Metrics collected at the end of a benchmark episode. */
+export interface EpisodeMetrics {
+  scenario_id: string;
+  policy: string;
+  episode_reward: number;
+  passengers_spawned: number;
+  passengers_served: number;
+  passengers_gone: number;
+  service_rate: number;
+  unserved_rate: number;
+  avg_wait_time_sec: number;
+  charge_events: number;
+  total_distance_px: number;
 }
