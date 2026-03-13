@@ -262,6 +262,50 @@ def evaluate_drt_baseline(
     )
 
 
+def evaluate_drt_policy_on_scenarios(
+    requests_paths: list[str],
+    vehicle_positions_path: str,
+    od_matrix_path: str,
+    policy_fn: PolicyFnDRT,
+    policy_name: str,
+    output_csv_dir: Optional[pathlib.Path] = None,
+) -> list[DRTEpisodeMetrics]:
+    """
+    Run one DRT episode per entry in requests_paths.
+
+    episode_id is derived from the requests file stem
+    (e.g. "requests_8" for "KW_DRT/data/requests_8.csv").
+
+    Args:
+        requests_paths:       List of paths to requests CSV files.
+        vehicle_positions_path: Path to vehicle positions CSV.
+        od_matrix_path:       Path to OD matrix CSV.
+        policy_fn:            (obs, mask) -> action  — greedy or PPO wrapper.
+        policy_name:          Label written to metrics / CSVs.
+        output_csv_dir:       If given, CSVs are written under
+                              output_csv_dir/{episode_id}/ per episode,
+                              and a row is appended to output_csv_dir/episodes.csv.
+
+    Returns:
+        List of DRTEpisodeMetrics, one per requests_path.
+    """
+    from backend.env.drt_env import DRTEnv
+
+    results: list[DRTEpisodeMetrics] = []
+    for req_path in requests_paths:
+        episode_id = pathlib.Path(req_path).stem
+        env = DRTEnv(req_path, vehicle_positions_path, od_matrix_path)
+        metrics = run_drt_episode(
+            env,
+            policy_fn=policy_fn,
+            policy_name=policy_name,
+            episode_id=episode_id,
+            output_csv_dir=output_csv_dir,
+        )
+        results.append(metrics)
+    return results
+
+
 def make_ppo_policy_fn(model) -> PolicyFnDRT:
     """
     Wrap a trained SB3 MaskablePPO model as a PolicyFnDRT.

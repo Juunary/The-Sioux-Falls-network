@@ -62,6 +62,25 @@ export interface DRTEvaluateRequest {
   output_csv?: boolean;
 }
 
+export interface DRTBatchEvaluateRequest {
+  requests_paths: string[];
+  vehicle_positions_path?: string;
+  od_matrix_path?: string;
+  /** 'greedy' | 'ppo' */
+  policy_type?: string;
+  /** Required when policy_type === 'ppo' */
+  job_id?: string;
+  output_csv?: boolean;
+}
+
+export interface ExportModelResult {
+  model_id: string;
+  onnx_path: string;
+  input_shape: number[];
+  output_shape: number[];
+  opset_version: number;
+}
+
 export function runEvaluation(req: EvaluateRequest = {}): Promise<EvaluateResponse> {
   return apiFetch('/experiments/evaluate', {
     method: 'POST',
@@ -74,6 +93,17 @@ export function runDRTEvaluation(req: DRTEvaluateRequest = {}): Promise<Evaluate
     method: 'POST',
     body: JSON.stringify(req),
   });
+}
+
+export function runDRTBatchEvaluation(req: DRTBatchEvaluateRequest): Promise<EvaluateResponse> {
+  return apiFetch('/experiments/evaluate/drt/batch', {
+    method: 'POST',
+    body: JSON.stringify(req),
+  });
+}
+
+export function exportModel(jobId: string): Promise<ExportModelResult> {
+  return apiFetch(`/models/${jobId}/export_onnx`, { method: 'POST' });
 }
 
 export function listExperiments(): Promise<{ experiments: Record<string, unknown>[] }> {

@@ -160,6 +160,24 @@ export interface DecisionContext {
   rng: () => number;
 }
 
+/** Metrics from a single DRT episode (units: ticks, not seconds/pixels). */
+export interface DRTEpisodeMetrics {
+  episode_id: string;
+  policy: string;
+  served_count: number;
+  cancelled_count: number;
+  total_requests: number;
+  serve_rate: number;
+  cancel_rate: number;
+  mean_wait_time: number;
+  mean_in_vehicle_time: number;
+  mean_detour_ticks: number;
+  total_reward: number;
+  total_steps: number;
+  total_ticks: number;
+  wall_time_sec: number;
+}
+
 /** Metrics collected at the end of a benchmark episode. */
 export interface EpisodeMetrics {
   scenario_id: string;

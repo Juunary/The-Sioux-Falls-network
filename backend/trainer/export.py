@@ -1,12 +1,11 @@
 # ============================================================
 # ONNX export — convert a trained MaskablePPO policy to ONNX
 #
-# Exported model spec:
-#   Input  "obs"           shape (batch, 96)  float32
-#   Output "action_logits" shape (batch, 24)  float32
+# Exported model spec (obs_dim / action_dim inferred from model):
+#   SF:  Input "obs" (batch, 96),  Output "action_logits" (batch, 24)
+#   DRT: Input "obs" (batch, 157), Output "action_logits" (batch, 9)
 #
-# Action masking (invalid actions → -inf) is applied by the
-# caller (frontend maskedArgmax) before taking argmax.
+# Action masking is applied by the caller before taking argmax.
 # ============================================================
 
 from __future__ import annotations
@@ -63,7 +62,9 @@ def export_to_onnx(
     wrapper = _PolicyONNXWrapper(model.policy)
     wrapper.eval()
 
-    dummy_obs = torch.zeros(1, 96, dtype=torch.float32)
+    obs_dim = model.observation_space.shape[0]
+    action_dim = model.action_space.n
+    dummy_obs = torch.zeros(1, obs_dim, dtype=torch.float32)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -83,7 +84,7 @@ def export_to_onnx(
     return {
         "model_id": output_path.stem,
         "onnx_path": str(output_path),
-        "input_shape": [1, 96],
-        "output_shape": [1, 24],
+        "input_shape": [1, obs_dim],
+        "output_shape": [1, action_dim],
         "opset_version": opset_version,
     }

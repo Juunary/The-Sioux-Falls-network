@@ -6,6 +6,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   runEvaluation,
   runDRTEvaluation,
+  runDRTBatchEvaluation,
   listExperiments,
   getExperiment,
   type MetricRow,
@@ -27,7 +28,17 @@ export default function ExperimentsPage() {
   const [runResult, setRunResult] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
 
-  // DRT eval form state
+  // DRT batch eval form state
+  const [batchPaths, setBatchPaths] = useState(
+    'KW_DRT/data/requests_8.csv,KW_DRT/data/requests_80.csv',
+  );
+  const [batchPolicyType, setBatchPolicyType] = useState<'greedy' | 'ppo'>('greedy');
+  const [batchJobId, setBatchJobId] = useState('');
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [batchResult, setBatchResult] = useState<string | null>(null);
+  const [batchError, setBatchError] = useState<string | null>(null);
+
+  // DRT single eval form state
   const [drtRequestsPath, setDrtRequestsPath] = useState('KW_DRT/data/requests_8.csv');
   const [drtVehiclePath, setDrtVehiclePath] = useState('KW_DRT/data/vehicle_positions.csv');
   const [drtOdPath, setDrtOdPath] = useState('KW_DRT/data/od_matrix.csv');
@@ -87,6 +98,28 @@ export default function ExperimentsPage() {
       setRunError(String(e));
     } finally {
       setRunning(false);
+    }
+  }
+
+  async function handleBatchRun(e: React.FormEvent) {
+    e.preventDefault();
+    setBatchRunning(true);
+    setBatchResult(null);
+    setBatchError(null);
+    try {
+      const paths = batchPaths.split(',').map((p) => p.trim()).filter(Boolean);
+      const res = await runDRTBatchEvaluation({
+        requests_paths: paths,
+        policy_type: batchPolicyType,
+        job_id: batchPolicyType === 'ppo' ? batchJobId : undefined,
+        output_csv: true,
+      });
+      setBatchResult(`Started: ${res.experiment_id}`);
+      setTimeout(loadExperiments, 2000);
+    } catch (e) {
+      setBatchError(String(e));
+    } finally {
+      setBatchRunning(false);
     }
   }
 
@@ -194,6 +227,44 @@ export default function ExperimentsPage() {
               </button>
               {drtResult && <span className="status-ok">{drtResult}</span>}
               {drtError  && <span className="status-err">{drtError}</span>}
+            </div>
+          </form>
+        </section>
+
+        <section className="card">
+          <h2 className="card-title">Run DRT Batch Evaluation</h2>
+          <form onSubmit={handleBatchRun}>
+            <div className="form-grid">
+              <label className="form-label" style={{ gridColumn: '1 / -1' }}>
+                Requests CSV paths (comma-separated)
+                <input type="text" value={batchPaths}
+                  onChange={(e) => setBatchPaths(e.target.value)}
+                  className="form-input" placeholder="KW_DRT/data/requests_8.csv, KW_DRT/data/requests_80.csv" />
+              </label>
+              <label className="form-label">
+                Policy type
+                <select value={batchPolicyType}
+                  onChange={(e) => setBatchPolicyType(e.target.value as 'greedy' | 'ppo')}
+                  className="form-input">
+                  <option value="greedy">greedy (drt_greedy_v1)</option>
+                  <option value="ppo">ppo (trained checkpoint)</option>
+                </select>
+              </label>
+              {batchPolicyType === 'ppo' && (
+                <label className="form-label">
+                  Job ID
+                  <input type="text" value={batchJobId}
+                    onChange={(e) => setBatchJobId(e.target.value)}
+                    className="form-input" placeholder="job_20240101_120000_abc123" />
+                </label>
+              )}
+            </div>
+            <div className="form-actions">
+              <button type="submit" className="btn btn-primary" disabled={batchRunning}>
+                {batchRunning ? 'Starting…' : 'Run Batch Eval'}
+              </button>
+              {batchResult && <span className="status-ok">{batchResult}</span>}
+              {batchError  && <span className="status-err">{batchError}</span>}
             </div>
           </form>
         </section>

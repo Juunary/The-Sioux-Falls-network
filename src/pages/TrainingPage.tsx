@@ -12,6 +12,7 @@ import {
   type JobInfo,
   type MetricsRecord,
 } from '../api/training';
+import { exportModel, type ExportModelResult } from '../api/experiments';
 import TrainingChart from '../components/TrainingChart';
 
 const DEFAULT_CONFIG: TrainingConfig = {
@@ -121,6 +122,25 @@ export default function TrainingPage() {
   }
 
   const selectedJob = jobs.find((j) => j.job_id === selectedJobId) ?? null;
+
+  const [exportPending, setExportPending] = useState(false);
+  const [exportResult, setExportResult] = useState<ExportModelResult | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  async function handleExport() {
+    if (!selectedJobId) return;
+    setExportPending(true);
+    setExportResult(null);
+    setExportError(null);
+    try {
+      const res = await exportModel(selectedJobId);
+      setExportResult(res);
+    } catch (e) {
+      setExportError(String(e));
+    } finally {
+      setExportPending(false);
+    }
+  }
 
   return (
     <div className="page-scrollable">
@@ -278,6 +298,26 @@ export default function TrainingPage() {
                 No metrics collected yet for this job.
               </div>
             )}
+          </section>
+        )}
+        {/* Export ONNX — shown only when a completed job is selected */}
+        {selectedJob && selectedJob.status === 'completed' && (
+          <section className="card">
+            <h2 className="card-title">Export ONNX — {selectedJob.job_id}</h2>
+            <p className="status-info" style={{ marginBottom: 8 }}>
+              Exports the final checkpoint to ONNX. Works for both SF (96-dim obs) and DRT (157-dim obs) jobs.
+            </p>
+            <div className="form-actions">
+              <button className="btn btn-primary" onClick={handleExport} disabled={exportPending}>
+                {exportPending ? 'Exporting…' : 'Export ONNX'}
+              </button>
+              {exportResult && (
+                <span className="status-ok">
+                  Exported: {exportResult.model_id} (input {exportResult.input_shape.join('×')}, output {exportResult.output_shape.join('×')})
+                </span>
+              )}
+              {exportError && <span className="status-err">{exportError}</span>}
+            </div>
           </section>
         )}
       </div>

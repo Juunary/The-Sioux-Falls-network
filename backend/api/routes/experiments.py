@@ -1,10 +1,11 @@
 # ============================================================
 # Experiments API routes
-# POST /api/experiments/evaluate      — run SF baseline evaluation
-# POST /api/experiments/evaluate/drt  — run DRT greedy evaluation
-# GET  /api/experiments/              — list experiments
-# GET  /api/experiments/{id}          — get experiment details + metrics
-# GET  /api/experiments/{id}/aggregate — get aggregate statistics (SF or DRT)
+# POST /api/experiments/evaluate            — run SF baseline evaluation
+# POST /api/experiments/evaluate/drt        — run DRT single-episode evaluation
+# POST /api/experiments/evaluate/drt/batch  — run DRT multi-scenario batch eval
+# GET  /api/experiments/                    — list experiments
+# GET  /api/experiments/{id}                — get experiment details + metrics
+# GET  /api/experiments/{id}/aggregate      — get aggregate statistics (SF or DRT)
 # ============================================================
 
 from __future__ import annotations
@@ -62,6 +63,15 @@ class DRTEvaluateRequest(BaseModel):
     vehicle_positions_path: str = "KW_DRT/data/vehicle_positions.csv"
     od_matrix_path: str = "KW_DRT/data/od_matrix.csv"
     episode_id: str = "drt_eval"
+    output_csv: bool = True
+
+
+class DRTBatchEvaluateRequest(BaseModel):
+    requests_paths: list[str]                                    # each must be under KW_DRT/data/
+    vehicle_positions_path: str = "KW_DRT/data/vehicle_positions.csv"
+    od_matrix_path: str = "KW_DRT/data/od_matrix.csv"
+    policy_type: str = "greedy"                                  # "greedy" | "ppo"
+    job_id: Optional[str] = None                                 # required when policy_type == "ppo"
     output_csv: bool = True
 
 
@@ -217,6 +227,105 @@ async def run_drt_evaluation(
         experiment_id=experiment_id,
         status="started",
         message=f"DRT evaluation started in background. experiment_id={experiment_id}",
+    )
+
+
+@router.post("/evaluate/drt/batch", response_model=EvaluateResponse)
+async def run_drt_batch_evaluation(
+    request: DRTBatchEvaluateRequest,
+    background_tasks: BackgroundTasks,
+) -> EvaluateResponse:
+    """
+    Run one DRT episode per entry in requests_paths and store all results.
+    Supports greedy baseline or a trained PPO checkpoint (policy_type='ppo', job_id=<job_id>).
+    All paths must be under KW_DRT/data/. Runs in a background thread.
+    """
+    global _active_evals
+
+    if not request.requests_paths:
+        raise HTTPException(status_code=400, detail="requests_paths must not be empty")
+    if request.policy_type not in ("greedy", "ppo"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"policy_type must be 'greedy' or 'ppo', got '{request.policy_type}'",
+        )
+    if request.policy_type == "ppo" and not request.job_id:
+        raise HTTPException(status_code=400, detail="job_id is required when policy_type is 'ppo'")
+
+    for p in request.requests_paths:
+        _validate_drt_path(p)
+    _validate_drt_path(request.vehicle_positions_path)
+    _validate_drt_path(request.od_matrix_path)
+
+    with _eval_lock:
+        if _active_evals >= _MAX_CONCURRENT_EVALS:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many concurrent evaluations (limit: {_MAX_CONCURRENT_EVALS}). Try again later.",
+            )
+        _active_evals += 1
+
+    policy_name = f"ppo_{request.job_id}" if request.policy_type == "ppo" else "drt_greedy_v1"
+    experiment_id = f"drt_batch_{datetime.now(tz=timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+    create_experiment(
+        experiment_id=experiment_id,
+        policy=policy_name,
+        split="n/a",
+        config={
+            "requests_paths": request.requests_paths,
+            "vehicle_positions_path": request.vehicle_positions_path,
+            "od_matrix_path": request.od_matrix_path,
+            "policy_type": request.policy_type,
+            "job_id": request.job_id,
+        },
+        domain="drt",
+    )
+
+    def _run_drt_batch():
+        global _active_evals
+        try:
+            from backend.datasets.drt_evaluator import evaluate_drt_policy_on_scenarios, make_ppo_policy_fn
+
+            if request.policy_type == "ppo":
+                from sb3_contrib import MaskablePPO
+                ckpt = pathlib.Path("data") / "training" / request.job_id / "ppo_final.zip"
+                if not ckpt.exists():
+                    raise FileNotFoundError(f"Checkpoint not found: {ckpt}")
+                model = MaskablePPO.load(str(ckpt))
+                policy_fn = make_ppo_policy_fn(model)
+            else:
+                from backend.baseline.drt_greedy import drt_greedy_policy
+                policy_fn = drt_greedy_policy
+
+            output_csv_dir = (
+                pathlib.Path("data") / "drt_csv" / experiment_id
+                if request.output_csv
+                else None
+            )
+            metrics_list = evaluate_drt_policy_on_scenarios(
+                requests_paths=request.requests_paths,
+                vehicle_positions_path=request.vehicle_positions_path,
+                od_matrix_path=request.od_matrix_path,
+                policy_fn=policy_fn,
+                policy_name=policy_name,
+                output_csv_dir=output_csv_dir,
+            )
+            record_drt_metrics(experiment_id, metrics_list)
+        except Exception as exc:
+            print(f"[drt_batch_evaluator] ERROR in experiment {experiment_id}: {exc}")
+        finally:
+            with _eval_lock:
+                _active_evals -= 1
+
+    background_tasks.add_task(_run_drt_batch)
+
+    return EvaluateResponse(
+        experiment_id=experiment_id,
+        status="started",
+        message=(
+            f"DRT batch evaluation started ({len(request.requests_paths)} scenario(s)). "
+            f"experiment_id={experiment_id}"
+        ),
     )
 
 
