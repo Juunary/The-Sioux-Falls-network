@@ -35,6 +35,10 @@ class Passenger:
     state: PassengerState
     waiting_since: float
     patience: float
+    pickup_at: float | None = None    # sim_time when passenger boarded a bus
+    dropoff_at: float | None = None   # sim_time when passenger alighted at destination
+    pickup_bus_distance_px: float | None = None   # bus.distance_px at boarding tick (before step_bus)
+    dropoff_bus_distance_px: float | None = None  # bus.distance_px at alighting tick (before step_bus)
 
 
 # ============================================================
@@ -127,7 +131,8 @@ def process_passengers(
                     # destination assigned by env; simplified: keep destination for parity
                 )
             else:
-                pax[idx] = replace(p, state="arrived", bus_id=None)
+                pax[idx] = replace(p, state="arrived", bus_id=None,
+                                   dropoff_bus_distance_px=bus.distance_px)
 
     # Rebuild index after alighting changes
     pax_by_id = {p.id: i for i, p in enumerate(pax)}
@@ -152,7 +157,8 @@ def process_passengers(
 
             bus.passenger_ids = bus.passenger_ids + [p.id]
             idx = pax_by_id[p.id]
-            pax[idx] = replace(p, state="riding", bus_id=bus.id)
+            pax[idx] = replace(p, state="riding", bus_id=bus.id,
+                               pickup_bus_distance_px=bus.distance_px)
 
     return updated_buses, pax
 

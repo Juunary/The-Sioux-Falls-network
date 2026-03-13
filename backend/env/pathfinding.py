@@ -134,6 +134,17 @@ def nearest_charging_station(
     return (best_node, path) if path else None
 
 
+def shortest_distance(src: int, dst: int) -> float:
+    """
+    Return the shortest path distance in pixels from src to dst.
+    Uses Dijkstra on the Sioux Falls graph.
+    Returns math.inf if dst is unreachable from src.
+    Unit: px (same as edge weights).
+    """
+    dist_map, _ = dijkstra(src)
+    return dist_map.get(dst, math.inf)
+
+
 # ============================================================
 # Nearest-Insertion Heuristic tour
 # ============================================================

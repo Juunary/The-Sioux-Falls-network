@@ -173,4 +173,6 @@ export interface EpisodeMetrics {
   avg_wait_time_sec: number;
   charge_events: number;
   total_distance_px: number;
+  avg_in_vehicle_sec: number;
+  avg_detour_px: number;
 }

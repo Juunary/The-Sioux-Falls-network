@@ -15,6 +15,7 @@ const EMPTY_STATS: AggregateStats = {
   avg_reward: 0,
   avg_service_rate: 0,
   avg_wait_time_sec: 0,
+  avg_detour_px: 0,
 };
 
 export default function ComparisonPage() {
@@ -135,6 +136,14 @@ export default function ComparisonPage() {
           </div>
         </section>
 
+        {statsA && statsB && statsA.domain !== statsB.domain && (
+          <div className="status-info" style={{ borderLeft: '4px solid #e0a040', paddingLeft: '0.75rem' }}>
+            ⚠ Domain mismatch: Experiment A is <strong>{statsA.domain ?? 'sf'}</strong> and
+            Experiment B is <strong>{statsB.domain ?? 'sf'}</strong>.
+            Metrics are not directly comparable across domains.
+          </div>
+        )}
+
         {statsA && statsB && (
           <>
             <section className="card">
@@ -155,6 +164,8 @@ export default function ComparisonPage() {
                       (v) => (v * 100).toFixed(1) + '%')}
                     {statRow('Avg Wait (s)', statsA.avg_wait_time_sec, statsB.avg_wait_time_sec,
                       (v) => v.toFixed(1), true)}
+                    {statRow('Avg Detour (px)', statsA.avg_detour_px, statsB.avg_detour_px,
+                      (v) => v.toFixed(1))}
                   </tbody>
                 </table>
               </div>

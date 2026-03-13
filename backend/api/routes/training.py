@@ -13,6 +13,8 @@ import asyncio
 import logging
 import uuid
 
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
@@ -26,7 +28,14 @@ router = APIRouter()
 # ---- Schemas ----
 
 class TrainingConfig(BaseModel):
+    env_type: str = "sf"   # "sf" | "drt"
+    # SF-specific
     split: str = "train"
+    # DRT-specific (required when env_type="drt")
+    drt_requests_path: Optional[str] = None
+    drt_vehicle_positions_path: Optional[str] = None
+    drt_od_matrix_path: Optional[str] = None
+    # Shared hyperparameters
     total_timesteps: int = Field(100_000, ge=1, le=5_000_000)
     n_envs: int = Field(2, ge=1, le=16)
     learning_rate: float = 3e-4

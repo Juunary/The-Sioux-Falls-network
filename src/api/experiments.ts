@@ -25,9 +25,11 @@ export interface MetricRow {
   passengers_gone: number;
   service_rate: number;
   unserved_rate: number;
-  avg_wait_time_sec: number;   // may be 0.0 (not yet implemented)
+  avg_wait_time_sec: number;
   charge_events: number;
-  total_distance_px: number;   // may be 0.0 (not yet implemented)
+  total_distance_px: number;
+  avg_in_vehicle_sec: number;
+  avg_detour_px: number;
 }
 
 export interface ExperimentDetail {
@@ -38,13 +40,37 @@ export interface ExperimentDetail {
 export interface AggregateStats {
   count: number;
   avg_reward: number;
-  avg_service_rate: number;
-  avg_wait_time_sec: number;   // may be 0.0 (not yet implemented in evaluator.py)
+  // SF fields
+  avg_service_rate?: number;
+  avg_wait_time_sec?: number;
+  avg_detour_px?: number;
+  // DRT fields
+  domain?: string;
+  avg_serve_rate?: number;
+  avg_cancel_rate?: number;
+  avg_wait_ticks?: number;
+  avg_ivt_ticks?: number;
+  avg_detour_ticks?: number;
   [key: string]: unknown;
+}
+
+export interface DRTEvaluateRequest {
+  requests_path?: string;
+  vehicle_positions_path?: string;
+  od_matrix_path?: string;
+  episode_id?: string;
+  output_csv?: boolean;
 }
 
 export function runEvaluation(req: EvaluateRequest = {}): Promise<EvaluateResponse> {
   return apiFetch('/experiments/evaluate', {
+    method: 'POST',
+    body: JSON.stringify(req),
+  });
+}
+
+export function runDRTEvaluation(req: DRTEvaluateRequest = {}): Promise<EvaluateResponse> {
+  return apiFetch('/experiments/evaluate/drt', {
     method: 'POST',
     body: JSON.stringify(req),
   });

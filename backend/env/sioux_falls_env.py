@@ -25,6 +25,7 @@ from __future__ import annotations
 import copy
 import math
 from collections import deque
+from dataclasses import replace
 from typing import Any, Optional
 
 import numpy as np
@@ -317,17 +318,20 @@ class SiouxFallsEnv(gym.Env):
         )
 
         # Detect arrived / gone events
-        for p in updated_pax:
+        for i, p in enumerate(updated_pax):
             prev = prev_states.get(p.id)
             if prev == "riding" and p.state == "arrived":
                 events.append({"type": "arrived", "passenger_id": p.id})
                 self._arrived_count += 1
+                if p.dropoff_at is None:
+                    updated_pax[i] = replace(p, dropoff_at=self.sim_time + dt)
             elif prev == "waiting" and p.state == "gone":
                 events.append({"type": "gone", "passenger_id": p.id})
                 self._gone_count += 1
 
         # Detect boarded events; record boarding wait time (spawn → board)
         pax_by_id = {p.id: p for p in updated_pax}
+        pax_index = {p.id: i for i, p in enumerate(updated_pax)}
         for bus in updated_buses:
             prev_pids = prev_bus_passengers.get(bus.id, set())
             new_pids = set(bus.passenger_ids) - prev_pids
@@ -338,6 +342,8 @@ class SiouxFallsEnv(gym.Env):
                     self._boarding_wait_times.append(
                         max(0.0, (self.sim_time + dt) - pax.waiting_since)
                     )
+                    if pax.pickup_at is None:
+                        updated_pax[pax_index[pid]] = replace(pax, pickup_at=self.sim_time + dt)
 
         # 2. Step buses (bus.id ascending)
         stepped_buses = []
@@ -367,7 +373,9 @@ class SiouxFallsEnv(gym.Env):
             # Accumulate distance: bus just completed an edge (currentEdge None→None transition
             # via node arrival detected as old edge present, new edge absent)
             if bus.current_edge is not None and new_bus.current_edge is None:
-                self._total_distance_px += EDGES[bus.current_edge].weight
+                edge_weight = EDGES[bus.current_edge].weight
+                self._total_distance_px += edge_weight
+                new_bus.distance_px += edge_weight
             stepped_buses.append(new_bus)
 
         # 3. Spawn passengers from replay queue

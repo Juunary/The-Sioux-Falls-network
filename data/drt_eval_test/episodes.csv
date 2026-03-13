@@ -1,0 +1,2 @@
+﻿episode_id,policy,served_count,cancelled_count,total_requests,serve_rate,cancel_rate,mean_wait_time,mean_in_vehicle_time,mean_detour_ticks,total_reward,total_steps,total_ticks,wall_time_sec
+greedy_ep0,drt_greedy_v1,5,3,8,0.625,0.375,6.6,6.4,0.0,5.9633,22,30,0.0

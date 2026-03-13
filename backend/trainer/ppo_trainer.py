@@ -142,3 +142,127 @@ def load_model(
     """Load a saved MaskablePPO model from a checkpoint."""
     from sb3_contrib import MaskablePPO
     return MaskablePPO.load(checkpoint_path, env=vec_env)
+
+
+# ============================================================
+# DRT (Dynamic Ride-Sharing) training support
+# ============================================================
+
+class RotatingDRTEpisodeEnv(gym.Env):
+    """
+    Gymnasium wrapper for DRTEnv that resets to the same data files
+    on every episode.  Designed for SubprocVecEnv + MaskablePPO.
+
+    Each subprocess worker holds one instance; because DRTEnv is
+    stateless between episodes (everything is re-initialised in reset())
+    we just re-create the inner env on each reset() call.
+    """
+
+    def __init__(
+        self,
+        requests_path: str,
+        vehicle_positions_path: str,
+        od_matrix_path: str,
+    ) -> None:
+        from backend.env.drt_env import DRTEnv
+
+        self._requests_path = requests_path
+        self._vehicle_positions_path = vehicle_positions_path
+        self._od_matrix_path = od_matrix_path
+
+        # Instantiate once to expose spaces to SubprocVecEnv before fork
+        self._inner = DRTEnv(requests_path, vehicle_positions_path, od_matrix_path)
+        self.observation_space = self._inner.observation_space
+        self.action_space = self._inner.action_space
+        self.metadata = getattr(self._inner, "metadata", {})
+
+    def reset(self, *, seed=None, options=None):
+        from backend.env.drt_env import DRTEnv
+
+        self._inner = DRTEnv(
+            self._requests_path,
+            self._vehicle_positions_path,
+            self._od_matrix_path,
+        )
+        return self._inner.reset(seed=seed, options=options)
+
+    def step(self, action):
+        return self._inner.step(action)
+
+    def action_masks(self) -> np.ndarray:
+        return self._inner.action_masks()
+
+    def render(self):
+        pass
+
+    def close(self):
+        pass
+
+
+def _make_drt_env_fn(
+    requests_path: str,
+    vehicle_positions_path: str,
+    od_matrix_path: str,
+):
+    """Return a callable for SubprocVecEnv factory."""
+    def _init():
+        return RotatingDRTEpisodeEnv(
+            requests_path, vehicle_positions_path, od_matrix_path
+        )
+    return _init
+
+
+def build_drt_model(
+    requests_path: str,
+    vehicle_pos_path: str,
+    od_matrix_path: str,
+    n_envs: int = 2,
+    learning_rate: float = 3e-4,
+    gamma: float = 0.99,
+    clip_range: float = 0.2,
+    ent_coef: float = 0.01,
+    n_steps: int = 2048,
+    batch_size: int = 256,
+    verbose: int = 1,
+    seed: int = 0,
+):
+    """
+    Build a MaskablePPO model for the DRT environment.
+
+    Uses SubprocVecEnv (parallel episode workers) wrapped with
+    VecNormalize for reward scaling.  Observation space is already
+    normalised to [0, 1] so norm_obs=False.
+
+    Returns (model, vec_env).
+    """
+    from sb3_contrib import MaskablePPO
+    from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
+
+    env_fns = [
+        _make_drt_env_fn(requests_path, vehicle_pos_path, od_matrix_path)
+        for _ in range(n_envs)
+    ]
+
+    vec_env = SubprocVecEnv(env_fns)
+    vec_env = VecNormalize(
+        vec_env,
+        norm_obs=False,   # obs already in [0, 1]
+        norm_reward=True,
+        clip_reward=10.0,
+        gamma=gamma,
+    )
+
+    model = MaskablePPO(
+        "MlpPolicy",
+        vec_env,
+        learning_rate=learning_rate,
+        gamma=gamma,
+        clip_range=clip_range,
+        ent_coef=ent_coef,
+        n_steps=n_steps,
+        batch_size=batch_size,
+        verbose=verbose,
+        seed=seed,
+    )
+
+    return model, vec_env

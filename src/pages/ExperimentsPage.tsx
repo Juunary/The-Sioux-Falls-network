@@ -5,6 +5,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   runEvaluation,
+  runDRTEvaluation,
   listExperiments,
   getExperiment,
   type MetricRow,
@@ -13,7 +14,7 @@ import {
 const NA = <span style={{ color: '#7a7a9a' }}>N/A</span>;
 
 function fmtNum(v: number | undefined | null, decimals = 3): React.ReactNode {
-  if (v === undefined || v === null || v === 0) return NA;
+  if (v === undefined || v === null) return NA;
   return v.toFixed(decimals);
 }
 
@@ -25,6 +26,15 @@ export default function ExperimentsPage() {
   const [running, setRunning] = useState(false);
   const [runResult, setRunResult] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+
+  // DRT eval form state
+  const [drtRequestsPath, setDrtRequestsPath] = useState('KW_DRT/data/requests_8.csv');
+  const [drtVehiclePath, setDrtVehiclePath] = useState('KW_DRT/data/vehicle_positions.csv');
+  const [drtOdPath, setDrtOdPath] = useState('KW_DRT/data/od_matrix.csv');
+  const [drtEpisodeId, setDrtEpisodeId] = useState('drt_eval');
+  const [drtRunning, setDrtRunning] = useState(false);
+  const [drtResult, setDrtResult] = useState<string | null>(null);
+  const [drtError, setDrtError] = useState<string | null>(null);
 
   const [experiments, setExperiments] = useState<Record<string, unknown>[]>([]);
   const [loadingExps, setLoadingExps] = useState(false);
@@ -80,6 +90,28 @@ export default function ExperimentsPage() {
     }
   }
 
+  async function handleDRTRun(e: React.FormEvent) {
+    e.preventDefault();
+    setDrtRunning(true);
+    setDrtResult(null);
+    setDrtError(null);
+    try {
+      const res = await runDRTEvaluation({
+        requests_path: drtRequestsPath,
+        vehicle_positions_path: drtVehiclePath,
+        od_matrix_path: drtOdPath,
+        episode_id: drtEpisodeId,
+        output_csv: true,
+      });
+      setDrtResult(`Started: ${res.experiment_id}`);
+      setTimeout(loadExperiments, 2000);
+    } catch (e) {
+      setDrtError(String(e));
+    } finally {
+      setDrtRunning(false);
+    }
+  }
+
   function handleSelectExp(id: string) {
     setSelectedExpId(id);
     loadMetrics(id);
@@ -128,6 +160,45 @@ export default function ExperimentsPage() {
         </section>
 
         <section className="card">
+          <h2 className="card-title">Run DRT Evaluation</h2>
+          <form onSubmit={handleDRTRun}>
+            <div className="form-grid">
+              <label className="form-label">
+                Requests CSV
+                <input type="text" value={drtRequestsPath}
+                  onChange={(e) => setDrtRequestsPath(e.target.value)}
+                  className="form-input" />
+              </label>
+              <label className="form-label">
+                Vehicle Positions CSV
+                <input type="text" value={drtVehiclePath}
+                  onChange={(e) => setDrtVehiclePath(e.target.value)}
+                  className="form-input" />
+              </label>
+              <label className="form-label">
+                OD Matrix CSV
+                <input type="text" value={drtOdPath}
+                  onChange={(e) => setDrtOdPath(e.target.value)}
+                  className="form-input" />
+              </label>
+              <label className="form-label">
+                Episode ID
+                <input type="text" value={drtEpisodeId}
+                  onChange={(e) => setDrtEpisodeId(e.target.value)}
+                  className="form-input" />
+              </label>
+            </div>
+            <div className="form-actions">
+              <button type="submit" className="btn btn-primary" disabled={drtRunning}>
+                {drtRunning ? 'Starting...' : 'Run DRT Eval'}
+              </button>
+              {drtResult && <span className="status-ok">{drtResult}</span>}
+              {drtError  && <span className="status-err">{drtError}</span>}
+            </div>
+          </form>
+        </section>
+
+        <section className="card">
           <div className="card-header-row">
             <h2 className="card-title">Past Experiments</h2>
             <button className="btn" onClick={loadExperiments} disabled={loadingExps}>Refresh</button>
@@ -140,17 +211,19 @@ export default function ExperimentsPage() {
             <div className="table-wrap">
               <table className="data-table">
                 <thead>
-                  <tr><th>Experiment ID</th><th>Policy</th><th>Split</th><th>Created</th></tr>
+                  <tr><th>Experiment ID</th><th>Domain</th><th>Policy</th><th>Split</th><th>Created</th></tr>
                 </thead>
                 <tbody>
                   {experiments.map((exp) => {
                     const id = exp['experiment_id'] as string;
+                    const domain = (exp['domain'] as string | undefined) ?? 'sf';
                     return (
                       <tr key={id}
                         className={id === selectedExpId ? 'row-selected' : ''}
                         onClick={() => handleSelectExp(id)}
                         style={{ cursor: 'pointer' }}>
                         <td className="mono">{id}</td>
+                        <td><span style={{ fontWeight: domain === 'drt' ? 600 : 400 }}>{domain}</span></td>
                         <td>{exp['policy'] as string}</td>
                         <td>{exp['split'] as string}</td>
                         <td className="mono">{exp['created_at'] as string}</td>
@@ -193,6 +266,7 @@ export default function ExperimentsPage() {
                         <th>Gone</th>
                         <th>Service %</th>
                         <th>Avg Wait</th>
+                        <th>Avg Detour (px)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -205,6 +279,7 @@ export default function ExperimentsPage() {
                           <td>{m.passengers_gone}</td>
                           <td>{(m.service_rate * 100).toFixed(1)}%</td>
                           <td>{fmtNum(m.avg_wait_time_sec, 1)}</td>
+                          <td>{fmtNum(m.avg_detour_px, 1)}</td>
                         </tr>
                       ))}
                     </tbody>

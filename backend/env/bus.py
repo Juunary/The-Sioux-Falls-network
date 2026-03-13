@@ -47,6 +47,7 @@ class BusState:
     charge_time_left: float
     passenger_ids: list[int]
     capacity: int
+    distance_px: float = 0.0  # cumulative distance this bus has traveled (px)
 
     def copy(self) -> "BusState":
         b = copy.copy(self)

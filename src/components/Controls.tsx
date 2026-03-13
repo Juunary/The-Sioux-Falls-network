@@ -1,6 +1,6 @@
 // ============================================================
 // Controls panel — play/pause, speed, bus count, routing mode,
-//                  PPO model management (Phase 8)
+//                  PPO model management
 // ============================================================
 
 import React, { useState, useEffect } from 'react';

@@ -28,5 +28,17 @@
     "@vitejs/plugin-react": "^4.3.1",
     "typescript": "^5.5.3",
     "vite": "^5.3.4"
-  }
+  },
+  "description": "An interactive 2D/3D city-network simulator and reinforcement learning testbed built on the Sioux Falls transportation benchmark (24 nodes, 76 directed edges).",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Juunary/The-Sioux-Falls-network.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Juunary/The-Sioux-Falls-network/issues"
+  },
+  "homepage": "https://github.com/Juunary/The-Sioux-Falls-network#readme"
 }

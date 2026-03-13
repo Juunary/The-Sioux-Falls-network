@@ -18,7 +18,7 @@ import sys
 from stable_baselines3.common.callbacks import CallbackList
 
 from backend.trainer.callbacks import CheckpointCallback, MetricsCallback
-from backend.trainer.ppo_trainer import build_model
+from backend.trainer.ppo_trainer import build_model, build_drt_model
 from backend.datasets.generator import list_scenarios
 
 
@@ -37,28 +37,60 @@ def main() -> None:
     checkpoint_dir = job_dir / "checkpoints"
     metrics_path = job_dir / "metrics.jsonl"
 
-    # ---- Load scenarios ----
-    split = config.get("split", "train")
-    scenario_paths = list_scenarios(split=split)
-    if not scenario_paths:
-        print(f"[worker] ERROR: No scenarios found for split='{split}'", file=sys.stderr)
-        sys.exit(1)
+    env_type = config.get("env_type", "sf")
 
-    print(f"[worker] job_id={job_id} | {len(scenario_paths)} scenarios | split={split}")
+    if env_type == "drt":
+        # ---- DRT: Dynamic Ride-Sharing environment ----
+        requests_path = config.get("drt_requests_path")
+        vehicle_pos_path = config.get("drt_vehicle_positions_path")
+        od_matrix_path = config.get("drt_od_matrix_path")
+        if not (requests_path and vehicle_pos_path and od_matrix_path):
+            print(
+                "[worker] ERROR: env_type='drt' requires drt_requests_path, "
+                "drt_vehicle_positions_path, drt_od_matrix_path",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
-    # ---- Build model ----
-    model, vec_env = build_model(
-        scenario_paths=scenario_paths,
-        n_envs=config.get("n_envs", 4),
-        learning_rate=config.get("learning_rate", 3e-4),
-        gamma=config.get("gamma", 0.95),
-        clip_range=config.get("clip_range", 0.2),
-        ent_coef=config.get("ent_coef", 0.01),
-        n_steps=config.get("n_steps", 2048),
-        batch_size=config.get("batch_size", 256),
-        verbose=config.get("verbose", 0),
-        seed=config.get("seed", 0),
-    )
+        print(f"[worker] job_id={job_id} | env_type=drt | requests={requests_path}")
+
+        model, vec_env = build_drt_model(
+            requests_path=requests_path,
+            vehicle_pos_path=vehicle_pos_path,
+            od_matrix_path=od_matrix_path,
+            n_envs=config.get("n_envs", 2),
+            learning_rate=config.get("learning_rate", 3e-4),
+            gamma=config.get("gamma", 0.99),
+            clip_range=config.get("clip_range", 0.2),
+            ent_coef=config.get("ent_coef", 0.01),
+            n_steps=config.get("n_steps", 2048),
+            batch_size=config.get("batch_size", 256),
+            verbose=config.get("verbose", 0),
+            seed=config.get("seed", 0),
+        )
+
+    else:
+        # ---- SF: Sioux Falls bus routing environment (default) ----
+        split = config.get("split", "train")
+        scenario_paths = list_scenarios(split=split)
+        if not scenario_paths:
+            print(f"[worker] ERROR: No scenarios found for split='{split}'", file=sys.stderr)
+            sys.exit(1)
+
+        print(f"[worker] job_id={job_id} | {len(scenario_paths)} scenarios | split={split}")
+
+        model, vec_env = build_model(
+            scenario_paths=scenario_paths,
+            n_envs=config.get("n_envs", 4),
+            learning_rate=config.get("learning_rate", 3e-4),
+            gamma=config.get("gamma", 0.95),
+            clip_range=config.get("clip_range", 0.2),
+            ent_coef=config.get("ent_coef", 0.01),
+            n_steps=config.get("n_steps", 2048),
+            batch_size=config.get("batch_size", 256),
+            verbose=config.get("verbose", 0),
+            seed=config.get("seed", 0),
+        )
 
     # ---- Callbacks ----
     callbacks = CallbackList([
