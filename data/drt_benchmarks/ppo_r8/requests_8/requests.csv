@@ -1,0 +1,9 @@
+﻿request_id,from_node,to_node,request_time,status,assigned_vehicle_id,waiting_time,in_vehicle_time,travel_time,detour_ticks,pickup_at,dropoff_at
+4,11,8,2,SERVED,0,5,6,6.0,0.0,7,13
+1,6,22,4,SERVED,1,2,9,9.0,0.0,6,15
+7,9,19,7,SERVED,0,7,6,6.0,0.0,14,20
+2,10,8,10,CANCELLED,-1,10,,4.0,,,
+3,24,7,11,CANCELLED,0,10,,4.0,,,
+6,18,2,8,SERVED,1,10,5,5.0,0.0,18,23
+8,6,17,13,CANCELLED,0,10,,6.0,,,
+5,24,17,15,CANCELLED,0,10,,6.0,,,

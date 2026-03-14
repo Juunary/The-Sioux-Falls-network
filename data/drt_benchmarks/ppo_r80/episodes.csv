@@ -1,0 +1,4 @@
+﻿episode_id,policy,served_count,cancelled_count,total_requests,serve_rate,cancel_rate,mean_wait_time,mean_in_vehicle_time,mean_detour_ticks,total_reward,total_steps,total_ticks,wall_time_sec
+requests_80,maskable_ppo_smoke,15,65,80,0.1875,0.8125,7.2667,13.0,7.4667,-35.3183,41,73,0.015
+requests_80,maskable_ppo_smoke,15,65,80,0.1875,0.8125,7.2667,13.0,7.4667,-35.3183,41,73,0.0
+requests_80,maskable_ppo_smoke,15,65,80,0.1875,0.8125,7.2667,13.0,7.4667,-35.3183,41,73,0.016

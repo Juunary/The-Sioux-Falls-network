@@ -1,0 +1,16 @@
+{
+  "checkpoint_path": "C:\\Users\\user\\Documents\\IntelliJ\\The-Sioux-Falls-network\\data\\training\\drt_smoke_test\\ppo_final.zip",
+  "onnx_path": "C:\\Users\\user\\Documents\\IntelliJ\\The-Sioux-Falls-network\\data\\training\\drt_smoke_test\\model.onnx",
+  "requests_file": "C:\\Users\\user\\Documents\\IntelliJ\\The-Sioux-Falls-network\\KW_DRT\\data\\requests_8.csv",
+  "obs_dim": 157,
+  "action_dim": 9,
+  "deterministic": true,
+  "masking_method": "masked_argmax (-1e9 for invalid actions)",
+  "total_steps": 17,
+  "match_count": 17,
+  "mismatch_count": 0,
+  "mismatch_steps": [],
+  "mask_violation_count": 0,
+  "all_match": true,
+  "mismatches": []
+}

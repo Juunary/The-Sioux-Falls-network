@@ -66,20 +66,34 @@ class MetricsCallback(BaseCallback):
         self.log_freq = log_freq
         self._episode_count = 0
         self._start_time = time.time()
+        # Per-env reward accumulator (fallback when ep_info_buffer is not populated)
+        self._current_ep_rewards: Optional[np.ndarray] = None
+        self._rollout_ep_rewards: list[float] = []
 
     def _on_step(self) -> bool:
-        # Check for episode completion in any env
-        if "dones" in self.locals:
-            for done in self.locals["dones"]:
+        # Lazily initialise per-env reward accumulator
+        if self._current_ep_rewards is None and "rewards" in self.locals:
+            n_envs = len(self.locals["rewards"])
+            self._current_ep_rewards = np.zeros(n_envs, dtype=np.float64)
+
+        if (
+            self._current_ep_rewards is not None
+            and "rewards" in self.locals
+            and "dones" in self.locals
+        ):
+            self._current_ep_rewards += np.asarray(self.locals["rewards"], dtype=np.float64)
+            for i, done in enumerate(self.locals["dones"]):
                 if done:
                     self._episode_count += 1
+                    self._rollout_ep_rewards.append(float(self._current_ep_rewards[i]))
+                    self._current_ep_rewards[i] = 0.0
         return True
 
     def _on_rollout_end(self) -> None:
         """Write metrics after each rollout collection."""
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Extract mean reward from SB3 logger
+        # Prefer ep_info_buffer (populated when Monitor wrapper is used)
         ep_rew_mean = None
         ep_len_mean = None
         if hasattr(self.model, "ep_info_buffer") and self.model.ep_info_buffer:
@@ -87,6 +101,12 @@ class MetricsCallback(BaseCallback):
             lengths = [ep["l"] for ep in self.model.ep_info_buffer]
             ep_rew_mean = float(np.mean(rewards))
             ep_len_mean = float(np.mean(lengths))
+        elif self._rollout_ep_rewards:
+            # Fallback: use per-step accumulated rewards (VecNormalize-normalised)
+            ep_rew_mean = float(np.mean(self._rollout_ep_rewards))
+
+        # Reset rollout buffer regardless of which path was used
+        self._rollout_ep_rewards = []
 
         record = {
             "timestep": self.num_timesteps,
@@ -100,4 +120,5 @@ class MetricsCallback(BaseCallback):
             f.write(json.dumps(record) + "\n")
 
         if self.verbose:
-            print(f"[metrics] t={self.num_timesteps} ep_rew_mean={ep_rew_mean:.2f}")
+            rew_str = f"{ep_rew_mean:.4f}" if ep_rew_mean is not None else "None"
+            print(f"[metrics] t={self.num_timesteps} ep_rew_mean={rew_str}")

@@ -1,0 +1,4 @@
+﻿episode_id,policy,served_count,cancelled_count,total_requests,serve_rate,cancel_rate,mean_wait_time,mean_in_vehicle_time,mean_detour_ticks,total_reward,total_steps,total_ticks,wall_time_sec
+requests_80,drt_greedy_v1,15,65,80,0.1875,0.8125,7.2,5.8667,0.2667,-28.8767,46,73,0.0
+requests_80,drt_greedy_v1,15,65,80,0.1875,0.8125,7.2,5.8667,0.2667,-28.8767,46,73,0.0
+requests_80,drt_greedy_v1,15,65,80,0.1875,0.8125,7.2,5.8667,0.2667,-28.8767,46,73,0.0
