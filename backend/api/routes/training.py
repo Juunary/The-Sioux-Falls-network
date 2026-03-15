@@ -29,9 +29,12 @@ router = APIRouter()
 
 class TrainingConfig(BaseModel):
     env_type: str = "sf"   # "sf" | "drt"
-    # SF-specific
+    # SF / DRT manifest mode: split is shared ("train" | "val" | "test")
     split: str = "train"
-    # DRT-specific (required when env_type="drt")
+    # DRT manifest mode (Stage 0.5+): canonical interface
+    manifest_path: Optional[str] = None   # path to manifest.jsonl
+    env_version: str = "drt_env_v1"       # used for comparison_group lookup
+    # DRT single-CSV mode (backward-compatible with Stage 0 scripts)
     drt_requests_path: Optional[str] = None
     drt_vehicle_positions_path: Optional[str] = None
     drt_od_matrix_path: Optional[str] = None

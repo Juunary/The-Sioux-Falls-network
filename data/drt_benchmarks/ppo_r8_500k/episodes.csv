@@ -1,2 +1,3 @@
 ﻿episode_id,policy,served_count,cancelled_count,total_requests,serve_rate,cancel_rate,mean_wait_time,mean_in_vehicle_time,mean_detour_ticks,total_reward,total_steps,total_ticks,wall_time_sec
 requests_8,maskable_ppo_500k,8,0,8,1.0,0.0,4.125,12.75,7.0,15.4017,24,34,0.016
+requests_8,maskable_ppo_500k,8,0,8,1.0,0.0,4.125,12.75,7.0,15.4017,24,34,0.015

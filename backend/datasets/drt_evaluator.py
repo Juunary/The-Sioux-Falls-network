@@ -306,6 +306,66 @@ def evaluate_drt_policy_on_scenarios(
     return results
 
 
+def evaluate_drt_policy_on_manifest(
+    manifest_path: str | pathlib.Path,
+    split: str,
+    policy_fn: PolicyFnDRT,
+    policy_name: str,
+    env_version: str = "drt_env_v1",
+    output_csv_dir: Optional[pathlib.Path] = None,
+) -> list["DRTEpisodeMetrics"]:
+    """
+    Run one DRT episode per manifest entry in the given split.
+
+    Manifest-based mainline interface (Stage 0.5+).
+    Entries whose comparison_group does not match ENV_CONFIGS[env_version]
+    are skipped with a warning (behaviour inherited from load_manifest_entries).
+
+    Args:
+        manifest_path: path to manifest.jsonl
+        split:         "train" | "val" | "test"
+        policy_fn:     (obs, mask) -> action
+        policy_name:   label written to metrics / CSVs
+        env_version:   used to look up expected comparison_group
+        output_csv_dir: if given, CSVs are written under
+                        output_csv_dir/{scenario_id}/ per episode,
+                        and a row is appended to output_csv_dir/episodes.csv
+
+    Returns:
+        List of DRTEpisodeMetrics, one per manifest entry.
+    """
+    from backend.env.drt_env import DRTEnv
+    from backend.env.drt_env_config import ENV_CONFIGS
+    from backend.datasets.manifest_utils import load_manifest_entries, resolve_and_validate
+
+    cfg = ENV_CONFIGS.get(env_version)
+    expected_cg = cfg.comparison_group if cfg is not None else None
+
+    manifest_path = pathlib.Path(manifest_path)
+    manifest_dir = manifest_path.parent
+
+    entries = load_manifest_entries(
+        manifest_path, split, expected_comparison_group=expected_cg
+    )
+
+    results: list[DRTEpisodeMetrics] = []
+    for entry in entries:
+        req = str(resolve_and_validate(manifest_dir, entry["requests_path"]))
+        veh = str(resolve_and_validate(manifest_dir, entry["vehicle_positions_path"]))
+        od  = str(resolve_and_validate(manifest_dir, entry["od_matrix_path"]))
+        env = DRTEnv(req, veh, od)
+        metrics = run_drt_episode(
+            env,
+            policy_fn=policy_fn,
+            policy_name=policy_name,
+            episode_id=entry["scenario_id"],
+            output_csv_dir=output_csv_dir,
+        )
+        results.append(metrics)
+
+    return results
+
+
 def make_ppo_policy_fn(model) -> PolicyFnDRT:
     """
     Wrap a trained SB3 MaskablePPO model as a PolicyFnDRT.

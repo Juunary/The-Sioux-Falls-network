@@ -118,6 +118,9 @@ def _init_db(db_path: pathlib.Path = _DEFAULT_DB) -> None:
             "ALTER TABLE episode_metrics ADD COLUMN avg_in_vehicle_sec REAL DEFAULT 0.0",
             "ALTER TABLE episode_metrics ADD COLUMN avg_detour_px REAL DEFAULT 0.0",
             "ALTER TABLE experiments ADD COLUMN domain TEXT DEFAULT 'sf'",
+            # Stage 0.5: DRT env tagging (NULL for SF experiments)
+            "ALTER TABLE experiments ADD COLUMN env_version TEXT",
+            "ALTER TABLE experiments ADD COLUMN comparison_group TEXT",
         ]
         for sql in _migrations:
             try:
@@ -136,6 +139,8 @@ def create_experiment(
     split: str,
     config: Optional[dict] = None,
     domain: str = "sf",
+    env_version: Optional[str] = None,
+    comparison_group: Optional[str] = None,
     db_path: pathlib.Path = _DEFAULT_DB,
 ) -> str:
     """Register a new experiment run. Returns experiment_id."""
@@ -143,8 +148,9 @@ def create_experiment(
     with _connect(db_path) as conn:
         conn.execute(
             """INSERT INTO experiments
-               (experiment_id, policy, split, created_at, git_commit, config_json, domain)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (experiment_id, policy, split, created_at, git_commit, config_json, domain,
+                env_version, comparison_group)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 experiment_id,
                 policy,
@@ -153,6 +159,8 @@ def create_experiment(
                 _get_git_commit(),
                 json.dumps(config) if config else None,
                 domain,
+                env_version,
+                comparison_group,
             ),
         )
     return experiment_id

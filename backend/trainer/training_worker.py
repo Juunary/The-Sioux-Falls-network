@@ -41,33 +41,60 @@ def main() -> None:
 
     if env_type == "drt":
         # ---- DRT: Dynamic Ride-Sharing environment ----
-        requests_path = config.get("drt_requests_path")
+        manifest_path  = config.get("manifest_path")   # Stage 0.5+ canonical field
+        split          = config.get("split", "train")
+        env_version    = config.get("env_version", "drt_env_v1")
+        requests_path  = config.get("drt_requests_path")
         vehicle_pos_path = config.get("drt_vehicle_positions_path")
         od_matrix_path = config.get("drt_od_matrix_path")
-        if not (requests_path and vehicle_pos_path and od_matrix_path):
+
+        if manifest_path:
+            # Manifest mode (Stage 0.5+): ignores individual CSV path fields
             print(
-                "[worker] ERROR: env_type='drt' requires drt_requests_path, "
-                "drt_vehicle_positions_path, drt_od_matrix_path",
-                file=sys.stderr,
+                f"[worker] job_id={job_id} | env_type=drt | "
+                f"manifest={manifest_path} | split={split}"
             )
-            sys.exit(1)
+            model, vec_env = build_drt_model(
+                manifest_path=manifest_path,
+                split=split,
+                env_version=env_version,
+                n_envs=config.get("n_envs", 2),
+                learning_rate=config.get("learning_rate", 3e-4),
+                gamma=config.get("gamma", 0.99),
+                clip_range=config.get("clip_range", 0.2),
+                ent_coef=config.get("ent_coef", 0.01),
+                n_steps=config.get("n_steps", 2048),
+                batch_size=config.get("batch_size", 256),
+                verbose=config.get("verbose", 0),
+                seed=config.get("seed", 0),
+            )
+        else:
+            # Single-CSV mode (backward-compatible with Stage 0 scripts)
+            if not (requests_path and vehicle_pos_path and od_matrix_path):
+                print(
+                    "[worker] ERROR: env_type='drt' requires either manifest_path "
+                    "or (drt_requests_path + drt_vehicle_positions_path + drt_od_matrix_path)",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
 
-        print(f"[worker] job_id={job_id} | env_type=drt | requests={requests_path}")
-
-        model, vec_env = build_drt_model(
-            requests_path=requests_path,
-            vehicle_pos_path=vehicle_pos_path,
-            od_matrix_path=od_matrix_path,
-            n_envs=config.get("n_envs", 2),
-            learning_rate=config.get("learning_rate", 3e-4),
-            gamma=config.get("gamma", 0.99),
-            clip_range=config.get("clip_range", 0.2),
-            ent_coef=config.get("ent_coef", 0.01),
-            n_steps=config.get("n_steps", 2048),
-            batch_size=config.get("batch_size", 256),
-            verbose=config.get("verbose", 0),
-            seed=config.get("seed", 0),
-        )
+            print(
+                f"[worker] job_id={job_id} | env_type=drt | requests={requests_path}"
+            )
+            model, vec_env = build_drt_model(
+                requests_path=requests_path,
+                vehicle_pos_path=vehicle_pos_path,
+                od_matrix_path=od_matrix_path,
+                n_envs=config.get("n_envs", 2),
+                learning_rate=config.get("learning_rate", 3e-4),
+                gamma=config.get("gamma", 0.99),
+                clip_range=config.get("clip_range", 0.2),
+                ent_coef=config.get("ent_coef", 0.01),
+                n_steps=config.get("n_steps", 2048),
+                batch_size=config.get("batch_size", 256),
+                verbose=config.get("verbose", 0),
+                seed=config.get("seed", 0),
+            )
 
     else:
         # ---- SF: Sioux Falls bus routing environment (default) ----
