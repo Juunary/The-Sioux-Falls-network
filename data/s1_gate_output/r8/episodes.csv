@@ -1,0 +1,8 @@
+﻿episode_id,policy,served_count,cancelled_count,total_requests,serve_rate,cancel_rate,mean_wait_time,mean_in_vehicle_time,mean_detour_ticks,total_reward,total_steps,total_ticks,wall_time_sec
+test_r8_original,llm_teacher,4,4,8,0.5,0.5,6.0,6.5,0.0,4.58,17,25,5.406
+test_r8_original,llm_teacher,4,4,8,0.5,0.5,7.0,6.5,0.0,3.505,18,25,11.563
+test_r8_original,llm_teacher,4,4,8,0.5,0.5,7.0,6.5,0.0,3.505,18,25,4.531
+test_r8_original,llm_teacher,4,4,8,0.5,0.5,7.0,6.5,0.0,3.505,18,25,0.766
+test_r8_original,llm_teacher,4,4,8,0.5,0.5,7.0,6.5,0.0,3.505,18,25,0.672
+test_r8_original,llm_teacher,4,4,8,0.5,0.5,7.0,6.5,0.0,3.505,18,25,0.688
+test_r8_original,llm_teacher,4,4,8,0.5,0.5,7.0,6.5,0.0,3.505,18,25,0.687

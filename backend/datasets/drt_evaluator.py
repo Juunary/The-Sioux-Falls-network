@@ -28,6 +28,7 @@ from backend.env.drt_request import RequestStatus
 
 if TYPE_CHECKING:
     from backend.env.drt_env import DRTEnv
+    from backend.llm.policy_context import PolicyContext
 
 PolicyFnDRT = Callable[[np.ndarray, np.ndarray], int]
 
@@ -364,6 +365,79 @@ def evaluate_drt_policy_on_manifest(
         results.append(metrics)
 
     return results
+
+
+def evaluate_drt_teacher_on_manifest(
+    manifest_path: str | pathlib.Path,
+    split: str,
+    ctx: "PolicyContext",
+    policy_name: str = "llm_teacher",
+    output_csv_dir: Optional[pathlib.Path] = None,
+) -> tuple[list["DRTEpisodeMetrics"], list[dict]]:
+    """Run one DRT episode per manifest entry using the LLM teacher policy.
+
+    Unlike evaluate_drt_policy_on_manifest(), this function creates a fresh
+    policy_fn per episode (to reset step counters and set episode_id/scenario_id
+    in the PolicyContext) and collects per-episode LLM stats.
+
+    Args:
+        manifest_path: path to manifest.jsonl
+        split:         "train" | "val" | "test"
+        ctx:           PolicyContext — env_version, model_id, prompt_version
+                       must be pre-populated.  scenario_id, episode_id and
+                       counters are updated per episode internally.
+        policy_name:   label written to metrics / CSVs (default "llm_teacher")
+        output_csv_dir: if given, CSVs per episode + episodes.csv summary
+
+    Returns:
+        (metrics_list, llm_stats_list)
+        llm_stats_list[i] = stats dict for episode i (v13 canonical)
+          keys: llm_calls, cache_hits, input_tokens, output_tokens,
+                invalid_actions, invalid_action_rate, api_cost_per_episode,
+                api_cost_per_decision, episode_latency_p50, episode_latency_p95,
+                teacher_agreement_rate, planner_override_rate, tool_call_success_rate
+    """
+    from backend.env.drt_env import DRTEnv
+    from backend.env.drt_env_config import ENV_CONFIGS
+    from backend.datasets.manifest_utils import load_manifest_entries, resolve_and_validate
+    from backend.llm.teacher import make_llm_teacher_policy_fn
+
+    env_version = ctx.env_version
+    cfg_meta = ENV_CONFIGS.get(env_version)
+    expected_cg = cfg_meta.comparison_group if cfg_meta is not None else None
+
+    manifest_path = pathlib.Path(manifest_path)
+    manifest_dir = manifest_path.parent
+
+    entries = load_manifest_entries(
+        manifest_path, split, expected_comparison_group=expected_cg
+    )
+
+    metrics_list: list[DRTEpisodeMetrics] = []
+    llm_stats_list: list[dict] = []
+
+    for entry in entries:
+        req = str(resolve_and_validate(manifest_dir, entry["requests_path"]))
+        veh = str(resolve_and_validate(manifest_dir, entry["vehicle_positions_path"]))
+        od  = str(resolve_and_validate(manifest_dir, entry["od_matrix_path"]))
+
+        ctx.scenario_id = entry["scenario_id"]
+        ctx.episode_id = f"{policy_name}_{entry['scenario_id']}"
+        ctx.reset_episode_stats()
+
+        policy_fn = make_llm_teacher_policy_fn(ctx)
+        env = DRTEnv(req, veh, od)
+        metrics = run_drt_episode(
+            env,
+            policy_fn=policy_fn,
+            policy_name=policy_name,
+            episode_id=entry["scenario_id"],
+            output_csv_dir=output_csv_dir,
+        )
+        metrics_list.append(metrics)
+        llm_stats_list.append(ctx.compute_llm_metrics())
+
+    return metrics_list, llm_stats_list
 
 
 def make_ppo_policy_fn(model) -> PolicyFnDRT:

@@ -121,6 +121,21 @@ def _init_db(db_path: pathlib.Path = _DEFAULT_DB) -> None:
             # Stage 0.5: DRT env tagging (NULL for SF experiments)
             "ALTER TABLE experiments ADD COLUMN env_version TEXT",
             "ALTER TABLE experiments ADD COLUMN comparison_group TEXT",
+            # Stage 1: LLM raw counters (NULL for greedy/PPO episodes)
+            "ALTER TABLE drt_episode_metrics ADD COLUMN llm_calls INTEGER",
+            "ALTER TABLE drt_episode_metrics ADD COLUMN cache_hits INTEGER",
+            "ALTER TABLE drt_episode_metrics ADD COLUMN input_tokens INTEGER",
+            "ALTER TABLE drt_episode_metrics ADD COLUMN output_tokens INTEGER",
+            "ALTER TABLE drt_episode_metrics ADD COLUMN invalid_actions INTEGER",
+            # Stage 1: v13 canonical LLM metrics (NULL for greedy/PPO)
+            "ALTER TABLE drt_episode_metrics ADD COLUMN invalid_action_rate REAL",
+            "ALTER TABLE drt_episode_metrics ADD COLUMN teacher_agreement_rate REAL",
+            "ALTER TABLE drt_episode_metrics ADD COLUMN planner_override_rate REAL",
+            "ALTER TABLE drt_episode_metrics ADD COLUMN tool_call_success_rate REAL",
+            "ALTER TABLE drt_episode_metrics ADD COLUMN api_cost_per_episode REAL",
+            "ALTER TABLE drt_episode_metrics ADD COLUMN api_cost_per_decision REAL",
+            "ALTER TABLE drt_episode_metrics ADD COLUMN episode_latency_p50 REAL",
+            "ALTER TABLE drt_episode_metrics ADD COLUMN episode_latency_p95 REAL",
         ]
         for sql in _migrations:
             try:
@@ -305,3 +320,83 @@ def aggregate_drt_metrics(
     if not row or row["count"] == 0:
         return {}
     return {"domain": "drt", **dict(row)}
+
+
+def record_drt_llm_stats(
+    experiment_id: str,
+    episode_id: str,
+    stats: dict,
+    db_path: pathlib.Path = _DEFAULT_DB,
+) -> None:
+    """Update LLM-specific columns for one drt_episode_metrics row.
+
+    Accepts both legacy raw counters (llm_calls, cache_hits, input_tokens,
+    output_tokens, invalid_actions) and v13 canonical metrics
+    (invalid_action_rate, api_cost_per_episode, api_cost_per_decision,
+    episode_latency_p50, episode_latency_p95, teacher_agreement_rate,
+    planner_override_rate, tool_call_success_rate).
+
+    Silently no-ops if the row does not exist.
+    """
+    _init_db(db_path)
+    allowed = {
+        # Legacy raw counters
+        "llm_calls", "cache_hits", "input_tokens", "output_tokens",
+        "invalid_actions",
+        # v13 canonical LLM metrics
+        "invalid_action_rate", "teacher_agreement_rate",
+        "planner_override_rate", "tool_call_success_rate",
+        "api_cost_per_episode", "api_cost_per_decision",
+        "episode_latency_p50", "episode_latency_p95",
+    }
+    updates = {k: v for k, v in stats.items() if k in allowed}
+    if not updates:
+        return
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [experiment_id, episode_id]
+    with _connect(db_path) as conn:
+        conn.execute(
+            f"UPDATE drt_episode_metrics SET {set_clause} "
+            "WHERE experiment_id = ? AND episode_id = ?",
+            values,
+        )
+
+
+def aggregate_llm_stats(
+    experiment_id: str,
+    db_path: pathlib.Path = _DEFAULT_DB,
+) -> dict:
+    """Return aggregate LLM usage stats for a DRT experiment.
+
+    Includes raw counter sums, cache_hit_rate, and v13 canonical
+    metric averages (invalid_action_rate, api_cost_per_episode,
+    api_cost_per_decision, episode_latency_p50/p95).
+    """
+    _init_db(db_path)
+    with _connect(db_path) as conn:
+        row = conn.execute(
+            """SELECT
+               COUNT(*)                         as episode_count,
+               SUM(llm_calls)                   as total_llm_calls,
+               SUM(cache_hits)                  as total_cache_hits,
+               SUM(input_tokens)                as total_input_tokens,
+               SUM(output_tokens)               as total_output_tokens,
+               SUM(invalid_actions)             as total_invalid_actions,
+               AVG(invalid_action_rate)          as avg_invalid_action_rate,
+               AVG(api_cost_per_episode)         as avg_api_cost_per_episode,
+               AVG(api_cost_per_decision)        as avg_api_cost_per_decision,
+               SUM(api_cost_per_episode)         as total_api_cost,
+               AVG(episode_latency_p50)          as avg_latency_p50,
+               AVG(episode_latency_p95)          as avg_latency_p95
+               FROM drt_episode_metrics
+               WHERE experiment_id = ? AND llm_calls IS NOT NULL""",
+            (experiment_id,),
+        ).fetchone()
+    if not row or row["episode_count"] == 0:
+        return {}
+    d = dict(row)
+    total_calls = (d["total_llm_calls"] or 0) + (d["total_cache_hits"] or 0)
+    d["cache_hit_rate"] = (
+        round(d["total_cache_hits"] / total_calls, 4) if total_calls > 0 else 0.0
+    )
+    return d

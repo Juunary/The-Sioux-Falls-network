@@ -1,0 +1,121 @@
+{
+  "preflight": {
+    "llm_provider": "gemini",
+    "model_id": "gemini-2.5-flash",
+    "manifest_exists": true,
+    "drt_env_importable": true,
+    "llm_modules_importable": true,
+    "provider_sdk_installed": true,
+    "provider_sdk_message": "google-generativeai SDK available",
+    "api_key_set": true,
+    "api_key_message": "API key present for 'gemini' (length=39)",
+    "api_key_verified": true,
+    "api_key_verify_message": "Skipped (--skip-key-verify)",
+    "env_config_valid": true,
+    "test_entries_count": 11,
+    "can_run": true
+  },
+  "r8_eval": {
+    "metrics": {
+      "episode_id": "test_r8_original",
+      "policy": "llm_teacher",
+      "served_count": 4,
+      "cancelled_count": 4,
+      "total_requests": 8,
+      "serve_rate": 0.5,
+      "cancel_rate": 0.5,
+      "mean_wait_time": 7.0,
+      "mean_in_vehicle_time": 6.5,
+      "mean_detour_ticks": 0.0,
+      "total_reward": 3.505,
+      "total_steps": 18,
+      "total_ticks": 25,
+      "wall_time_sec": 0.687
+    },
+    "llm_stats": {
+      "llm_calls": 13,
+      "cache_hits": 5,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "invalid_actions": 13,
+      "invalid_action_rate": 0.7222,
+      "episode_latency_p50": 1.5,
+      "episode_latency_p95": 100.1,
+      "api_cost_per_episode": 0.0,
+      "api_cost_per_decision": 0.0,
+      "teacher_agreement_rate": null,
+      "planner_override_rate": null,
+      "tool_call_success_rate": null
+    },
+    "completed": true,
+    "wall_time_sec": 0.71
+  },
+  "full_eval": {
+    "experiment_id": "s1_gate_llm_teacher_20260315_123103",
+    "episode_count": 11,
+    "all_completed": true
+  },
+  "consistency": {
+    "reps": 10,
+    "actions": [
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8
+    ],
+    "most_common_action": 8,
+    "most_common_count": 10,
+    "match_rate": 1.0,
+    "passed": true,
+    "wall_time_sec": 0.04
+  },
+  "artifacts": {
+    "trace_dir_exists": true,
+    "trace_file_count": 83,
+    "trace_latest_entries": 10,
+    "trace_schema_valid": true,
+    "cache_db_exists": true,
+    "cache_entries": 15,
+    "db_llm_rows": 11,
+    "db_v13_cols_populated": true
+  },
+  "gates": {
+    "S1-F1": {
+      "name": "Valid action rate >= 95%",
+      "value": 0.0403,
+      "threshold": 0.95,
+      "passed": false
+    },
+    "S1-F2": {
+      "name": "Episode completion 100% (R8 + R80)",
+      "value": "11/11",
+      "passed": true
+    },
+    "S1-F3": {
+      "name": "Trace consistency >= 90%",
+      "value": 1.0,
+      "threshold": 0.9,
+      "passed": true
+    },
+    "S1-F4": {
+      "name": "API cost per episode recorded",
+      "value": 0.0,
+      "passed": true
+    },
+    "all_passed": false
+  },
+  "greedy_reference": {
+    "available": true,
+    "episode_count": 11,
+    "avg_serve_rate": 0.2525,
+    "avg_total_reward": -16.4482,
+    "min_serve_rate": 0.1806,
+    "max_serve_rate": 0.625
+  }
+}

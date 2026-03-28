@@ -1,0 +1,11 @@
+# Stage 1: LLM teacher / reward shaping
+anthropic>=0.25
+openai>=1.0
+google-generativeai>=0.8
+
+# Stage 3-B/3-C: LLM fine-tuning (uncomment when needed)
+# transformers>=4.40
+# trl>=0.8
+# peft>=0.10
+# vllm>=0.4
+# openrlhf>=0.3

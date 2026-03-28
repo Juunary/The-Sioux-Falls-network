@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -93,3 +93,29 @@ class ScenarioListItem(BaseModel):
 class ScenarioListResponse(BaseModel):
     scenarios: list[ScenarioListItem]
     total: int
+
+
+# ---- Stage 1: LLM evaluation request schemas ----
+
+class LLMTeacherRequest(BaseModel):
+    """Request body for POST /evaluate/drt/batch with policy_type='llm_teacher'.
+
+    Uses manifest_path + split as the canonical input interface (Stage 0.5+).
+    llm_provider is required — API callers must explicitly select a provider.
+    """
+    model_config = {"protected_namespaces": ()}
+
+    manifest_path: str = "KW_DRT/data/scenarios/manifest.jsonl"
+    split: Literal["train", "val", "test"] = "test"
+    policy_type: Literal["llm_teacher"] = "llm_teacher"
+    env_version: str = "drt_env_v1"
+    llm_provider: Literal["anthropic", "gemini"] = Field(
+        ...,  # required — no default; API must explicitly choose
+        description="LLM provider: 'anthropic' (Claude) or 'gemini' (Google)",
+    )
+    model_id: str = "claude-sonnet-4-6"
+    prompt_version: str = "v1"
+    temperature: float = Field(0.0, ge=0.0, le=2.0)
+    max_tokens: int = Field(64, ge=1, le=4096)
+    cache_enabled: bool = True
+    output_csv: bool = True

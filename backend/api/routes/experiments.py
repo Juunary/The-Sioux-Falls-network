@@ -23,10 +23,12 @@ from backend.baseline.demand_aware import BASELINE_NAME
 from backend.datasets.evaluator import evaluate_baseline, greedy_policy_fn
 from backend.experiments.tracker import (
     aggregate_drt_metrics,
+    aggregate_llm_stats,
     aggregate_metrics,
     create_experiment,
     get_experiment_metrics,
     list_experiments,
+    record_drt_llm_stats,
     record_drt_metrics,
     record_metrics,
 )
@@ -67,12 +69,25 @@ class DRTEvaluateRequest(BaseModel):
 
 
 class DRTBatchEvaluateRequest(BaseModel):
-    requests_paths: list[str]                                    # each must be under KW_DRT/data/
+    # ---- Stage 0 low-level input (requests_paths) ----
+    requests_paths: list[str] = []                               # each must be under KW_DRT/data/
     vehicle_positions_path: str = "KW_DRT/data/vehicle_positions.csv"
     od_matrix_path: str = "KW_DRT/data/od_matrix.csv"
-    policy_type: str = "greedy"                                  # "greedy" | "ppo"
+    # ---- Stage 0.5+ manifest input (takes priority over requests_paths) ----
+    manifest_path: Optional[str] = None                          # e.g. "KW_DRT/data/scenarios/manifest.jsonl"
+    split: Optional[str] = None                                  # "train" | "val" | "test"
+    # ---- Common fields ----
+    policy_type: str = "greedy"                                  # "greedy" | "ppo" | "llm_teacher"
+    env_version: str = "drt_env_v1"
     job_id: Optional[str] = None                                 # required when policy_type == "ppo"
     output_csv: bool = True
+    # ---- LLM teacher fields (required when policy_type == "llm_teacher") ----
+    llm_provider: Optional[str] = None                              # "anthropic" | "gemini" — required for llm_teacher
+    model_id: str = "claude-sonnet-4-6"
+    prompt_version: str = "v1"
+    temperature: float = 0.0
+    max_tokens: int = 64
+    cache_enabled: bool = True
 
 
 class EvaluateResponse(BaseModel):
@@ -242,20 +257,49 @@ async def run_drt_batch_evaluation(
     """
     global _active_evals
 
-    if not request.requests_paths:
-        raise HTTPException(status_code=400, detail="requests_paths must not be empty")
-    if request.policy_type not in ("greedy", "ppo"):
+    _VALID_POLICY_TYPES = ("greedy", "ppo", "llm_teacher")
+    if request.policy_type not in _VALID_POLICY_TYPES:
         raise HTTPException(
             status_code=400,
-            detail=f"policy_type must be 'greedy' or 'ppo', got '{request.policy_type}'",
+            detail=f"policy_type must be one of {_VALID_POLICY_TYPES}, got '{request.policy_type}'",
+        )
+
+    use_manifest = request.manifest_path is not None
+    if not use_manifest and not request.requests_paths:
+        raise HTTPException(
+            status_code=400,
+            detail="Either manifest_path or requests_paths must be provided",
+        )
+    if use_manifest and not request.split:
+        raise HTTPException(
+            status_code=400,
+            detail="split is required when manifest_path is provided",
         )
     if request.policy_type == "ppo" and not request.job_id:
         raise HTTPException(status_code=400, detail="job_id is required when policy_type is 'ppo'")
+    if request.policy_type == "llm_teacher" and not use_manifest:
+        raise HTTPException(
+            status_code=400,
+            detail="policy_type='llm_teacher' requires manifest_path + split",
+        )
+    if request.policy_type == "llm_teacher" and not request.llm_provider:
+        raise HTTPException(
+            status_code=400,
+            detail="policy_type='llm_teacher' requires llm_provider ('anthropic' or 'gemini')",
+        )
+    if request.llm_provider and request.llm_provider not in ("anthropic", "gemini"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"llm_provider must be 'anthropic' or 'gemini', got '{request.llm_provider}'",
+        )
 
-    for p in request.requests_paths:
-        _validate_drt_path(p)
-    _validate_drt_path(request.vehicle_positions_path)
-    _validate_drt_path(request.od_matrix_path)
+    if use_manifest:
+        _validate_drt_path(request.manifest_path)
+    else:
+        for p in request.requests_paths:
+            _validate_drt_path(p)
+        _validate_drt_path(request.vehicle_positions_path)
+        _validate_drt_path(request.od_matrix_path)
 
     with _eval_lock:
         if _active_evals >= _MAX_CONCURRENT_EVALS:
@@ -265,26 +309,73 @@ async def run_drt_batch_evaluation(
             )
         _active_evals += 1
 
-    policy_name = f"ppo_{request.job_id}" if request.policy_type == "ppo" else "drt_greedy_v1"
+    if request.policy_type == "ppo":
+        policy_name = f"ppo_{request.job_id}"
+    elif request.policy_type == "llm_teacher":
+        policy_name = f"llm_teacher_{request.llm_provider}_{request.model_id}_{request.prompt_version}"
+    else:
+        policy_name = "drt_greedy_v1"
+
     experiment_id = f"drt_batch_{datetime.now(tz=timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+    _split_label = request.split if use_manifest else "n/a"
     create_experiment(
         experiment_id=experiment_id,
         policy=policy_name,
-        split="n/a",
+        split=_split_label,
         config={
+            "manifest_path": request.manifest_path,
             "requests_paths": request.requests_paths,
             "vehicle_positions_path": request.vehicle_positions_path,
             "od_matrix_path": request.od_matrix_path,
             "policy_type": request.policy_type,
+            "env_version": request.env_version,
             "job_id": request.job_id,
+            "llm_provider": request.llm_provider,
+            "model_id": request.model_id,
+            "prompt_version": request.prompt_version,
         },
         domain="drt",
+        env_version=request.env_version,
     )
 
     def _run_drt_batch():
         global _active_evals
         try:
-            from backend.datasets.drt_evaluator import evaluate_drt_policy_on_scenarios, make_ppo_policy_fn
+            output_csv_dir = (
+                pathlib.Path("data") / "drt_csv" / experiment_id
+                if request.output_csv
+                else None
+            )
+
+            # ---- llm_teacher path (manifest only) ----
+            if request.policy_type == "llm_teacher":
+                from backend.datasets.drt_evaluator import evaluate_drt_teacher_on_manifest
+                from backend.llm.policy_context import PolicyContext
+
+                ctx = PolicyContext(
+                    env_version=request.env_version,
+                    model_id=request.model_id,
+                    prompt_version=request.prompt_version,
+                    llm_provider=request.llm_provider,
+                )
+                metrics_list, llm_stats_list = evaluate_drt_teacher_on_manifest(
+                    manifest_path=request.manifest_path,
+                    split=request.split,
+                    ctx=ctx,
+                    policy_name=policy_name,
+                    output_csv_dir=output_csv_dir,
+                )
+                record_drt_metrics(experiment_id, metrics_list)
+                for m, stats in zip(metrics_list, llm_stats_list):
+                    record_drt_llm_stats(experiment_id, m.episode_id, stats)
+                return
+
+            # ---- greedy / ppo path ----
+            from backend.datasets.drt_evaluator import (
+                evaluate_drt_policy_on_scenarios,
+                evaluate_drt_policy_on_manifest,
+                make_ppo_policy_fn,
+            )
 
             if request.policy_type == "ppo":
                 from sb3_contrib import MaskablePPO
@@ -297,19 +388,24 @@ async def run_drt_batch_evaluation(
                 from backend.baseline.drt_greedy import drt_greedy_policy
                 policy_fn = drt_greedy_policy
 
-            output_csv_dir = (
-                pathlib.Path("data") / "drt_csv" / experiment_id
-                if request.output_csv
-                else None
-            )
-            metrics_list = evaluate_drt_policy_on_scenarios(
-                requests_paths=request.requests_paths,
-                vehicle_positions_path=request.vehicle_positions_path,
-                od_matrix_path=request.od_matrix_path,
-                policy_fn=policy_fn,
-                policy_name=policy_name,
-                output_csv_dir=output_csv_dir,
-            )
+            if use_manifest:
+                metrics_list = evaluate_drt_policy_on_manifest(
+                    manifest_path=request.manifest_path,
+                    split=request.split,
+                    policy_fn=policy_fn,
+                    policy_name=policy_name,
+                    env_version=request.env_version,
+                    output_csv_dir=output_csv_dir,
+                )
+            else:
+                metrics_list = evaluate_drt_policy_on_scenarios(
+                    requests_paths=request.requests_paths,
+                    vehicle_positions_path=request.vehicle_positions_path,
+                    od_matrix_path=request.od_matrix_path,
+                    policy_fn=policy_fn,
+                    policy_name=policy_name,
+                    output_csv_dir=output_csv_dir,
+                )
             record_drt_metrics(experiment_id, metrics_list)
         except Exception as exc:
             print(f"[drt_batch_evaluator] ERROR in experiment {experiment_id}: {exc}")
@@ -319,11 +415,17 @@ async def run_drt_batch_evaluation(
 
     background_tasks.add_task(_run_drt_batch)
 
+    _n_scenarios = (
+        f"manifest={request.manifest_path} split={request.split}"
+        if use_manifest
+        else f"{len(request.requests_paths)} scenario(s)"
+    )
     return EvaluateResponse(
         experiment_id=experiment_id,
         status="started",
         message=(
-            f"DRT batch evaluation started ({len(request.requests_paths)} scenario(s)). "
+            f"DRT batch evaluation started ({_n_scenarios}). "
+            f"policy_type={request.policy_type}. "
             f"experiment_id={experiment_id}"
         ),
     )
